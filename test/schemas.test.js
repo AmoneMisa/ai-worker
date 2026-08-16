@@ -40,8 +40,25 @@ test('apartment validation degrades impossible values safely', () => {
 });
 
 test('vacancy validation normalizes inverted ranges', () => {
-  const parsed = VacancySchema.parse({ salaryMin: 5000, salaryMax: 2500, confidence: 0.8 });
+  const parsed = VacancySchema.parse({
+    salaryMin: 5000,
+    salaryMax: 2500,
+    experienceMinYears: 7,
+    experienceMaxYears: 5,
+    seniority: 'senior',
+    salaryGross: true,
+    salaryNegotiable: false,
+    niceToHave: ['Docker', ' Docker '],
+    tools: ['GitLab', 'GitLab'],
+    confidence: 0.8,
+  });
   const value = sanitizeVacancy(parsed);
   assert.equal(value.salaryMin, 2500);
   assert.equal(value.salaryMax, 5000);
+  assert.equal(value.experienceMinYears, 5);
+  assert.equal(value.experienceMaxYears, 7);
+  assert.equal(value.seniority, 'senior');
+  assert.equal(value.salaryGross, true);
+  assert.deepEqual(value.niceToHave, ['Docker']);
+  assert.deepEqual(value.tools, ['GitLab']);
 });

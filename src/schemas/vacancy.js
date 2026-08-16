@@ -39,6 +39,17 @@ const vacancyProperties = {
     foreignersAccepted: { type: BOOL },
     localLanguageRequired: { type: BOOL },
     localLanguageLevel: { type: STR },
+    salaryGross: { type: BOOL },
+    salaryNegotiable: { type: BOOL },
+    seniority: { type: STR, enum: ['junior', 'middle', 'senior', 'lead', null] },
+    schedule: { type: STR },
+    contractType: { type: STR },
+    education: { type: STR },
+    managementRole: { type: BOOL },
+    deadline: { type: STR },
+    niceToHave: { type: 'array', items: { type: 'string' } },
+    tools: { type: 'array', items: { type: 'string' } },
+    applicationLanguage: { type: STR },
     confidence: { type: 'number' },
 };
 
@@ -77,6 +88,17 @@ export const VacancySchema = z.object({
   foreignersAccepted: nBool,
   localLanguageRequired: nBool,
   localLanguageLevel: nStr,
+  salaryGross: nBool,
+  salaryNegotiable: nBool,
+  seniority: z.enum(['junior', 'middle', 'senior', 'lead']).nullable().catch(null),
+  schedule: nStr,
+  contractType: nStr,
+  education: nStr,
+  managementRole: nBool,
+  deadline: nStr,
+  niceToHave: z.array(z.string()).catch([]),
+  tools: z.array(z.string()).catch([]),
+  applicationLanguage: nStr,
   confidence: z.number().min(0).max(1).catch(0),
 }).partial();
 
@@ -86,5 +108,12 @@ export function sanitizeVacancy(v) {
     [v.salaryMin, v.salaryMax] = [v.salaryMax, v.salaryMin];
   }
   if (v.experienceMinYears != null && (v.experienceMinYears < 0 || v.experienceMinYears > 50)) v.experienceMinYears = null;
+  if (v.experienceMaxYears != null && (v.experienceMaxYears < 0 || v.experienceMaxYears > 50)) v.experienceMaxYears = null;
+  if (v.experienceMinYears != null && v.experienceMaxYears != null && v.experienceMinYears > v.experienceMaxYears) {
+    [v.experienceMinYears, v.experienceMaxYears] = [v.experienceMaxYears, v.experienceMinYears];
+  }
+  for (const field of ['skills', 'niceToHave', 'tools', 'visaTypes']) {
+    v[field] = [...new Set((v[field] || []).map((item) => item.trim()).filter(Boolean))];
+  }
   return v;
 }
