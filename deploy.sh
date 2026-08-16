@@ -28,6 +28,24 @@ compose=(docker compose --env-file ai-worker.env)
 "${compose[@]}" up -d --build ai-worker
 "${compose[@]}" ps
 
-curl --fail --silent --show-error --retry 12 --retry-delay 5 \
-  http://127.0.0.1:4030/health
-echo
+# `docker compose up -d` returns as soon as the container starts, before Node
+# necessarily binds the port. A curl in that small window can fail with
+# connection reset even though the service becomes healthy a moment later.
+health_url="http://127.0.0.1:4030/health"
+ready_url="http://127.0.0.1:4030/ready"
+
+for attempt in $(seq 1 30); do
+  if curl --fail --silent --max-time 5 "$ready_url" >/dev/null 2>&1; then
+    curl --fail --silent --show-error --max-time 10 "$health_url"
+    echo
+    exit 0
+  fi
+
+  echo "Waiting for ai-worker readiness (${attempt}/30)..."
+  sleep 3
+done
+
+echo "ai-worker did not become ready; recent container logs:" >&2
+"${compose[@]}" ps >&2
+"${compose[@]}" logs --tail 100 ai-worker >&2
+exit 1
