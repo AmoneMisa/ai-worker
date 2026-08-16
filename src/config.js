@@ -15,6 +15,7 @@ export const config = {
 
   ollamaUrl: process.env.OLLAMA_URL || 'http://ollama:11434',
   model: process.env.AI_MODEL || 'qwen2.5:3b',
+  think: false,
   visionModel: process.env.AI_VISION_MODEL || 'qwen2.5vl:3b',
 
   // CPU-only: inference is serial. One at a time, everything else waits in queue.
