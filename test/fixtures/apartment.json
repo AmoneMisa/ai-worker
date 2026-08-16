@@ -1,0 +1,16 @@
+{
+  "kind": "apartment",
+  "rawText": "Chilonzor 14 kvartil\n1 xona 50 kvadirat\n6 etaj\n9 etajli novostroyka\nHamma usloviya bor\nNarxi 500$\nKomissiya 50%\nAloqa: +998 90 123 45 67",
+  "knownFacts": {
+    "rooms": 1,
+    "areaM2": 50,
+    "floor": 6,
+    "floorsTotal": 9,
+    "price": 500,
+    "currency": "USD"
+  },
+  "meta": {
+    "country": "UZ",
+    "source": "benchmark"
+  }
+}

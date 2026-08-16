@@ -1,0 +1,8 @@
+node_modules/
+ai-worker.env
+.env
+*.log
+coverage/
+.idea/
+.vscode/
+.DS_Store

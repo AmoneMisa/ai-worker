@@ -1,0 +1,16 @@
+{
+  "kind": "vacancy",
+  "rawText": "Ищем Middle Vue.js разработчика, удалёнка, можно из любой страны. Зарплата 2500–3500 USD в месяц. Английский B2. Помощь с релокацией в Польшу. Стек: Vue, TypeScript, Pinia, REST. Опыт от 3 лет. Email: hr@example.com",
+  "knownFacts": {
+    "salaryMin": 2500,
+    "salaryMax": 3500,
+    "currency": "USD",
+    "salaryPeriod": "month",
+    "skills": ["Vue.js", "TypeScript", "Pinia", "REST API"],
+    "experienceMinYears": 3
+  },
+  "meta": {
+    "country": "PL",
+    "source": "benchmark"
+  }
+}

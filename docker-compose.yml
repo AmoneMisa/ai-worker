@@ -1,0 +1,117 @@
+services:
+  # Local LLM runtime. Private — only ai-worker (same internal network) reaches
+  # it; never published to the host or the shared ai-net (spec §34/§35).
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      # CPU-only: keep inference serial so it can't monopolize all vCPUs (spec §3).
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=5m
+    networks: [ internal ]
+    cpus: "${OLLAMA_CPUS:-3.0}"
+    mem_limit: "${OLLAMA_MEMORY_LIMIT:-8g}"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # One-shot model preloader, invoked explicitly by deploy.sh. Keeping it behind
+  # a profile means a normal `docker compose up` does not leave a stopped helper
+  # container in the project.
+  ollama-pull:
+    image: ollama/ollama
+    profiles: [ setup ]
+    restart: "no"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/ollama"]
+    command: ["pull", "${AI_MODEL:-qwen2.5:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks: [ internal ]
+
+  # Dedicated Redis for the BullMQ queue + result cache. Separate from the apps'
+  # caches on purpose: those use allkeys-lru eviction, which would silently drop
+  # queued jobs. noeviction + AOF keeps the queue durable.
+  ai-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes:
+      - ai-redis-data:/data
+    networks: [ internal ]
+    mem_limit: "${AI_REDIS_MEMORY_LIMIT:-384m}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  ai-worker:
+    build:
+      context: .
+    restart: unless-stopped
+    init: true
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - REDIS_URL=redis://ai-redis:6379
+      - AI_ENABLED=${AI_ENABLED:-true}
+      - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
+      - AI_VISION_ENABLED=${AI_VISION_ENABLED:-false}
+      - AI_OCR_ENABLED=${AI_OCR_ENABLED:-false}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-qwen2.5:3b}
+      - AI_VISION_MODEL=${AI_VISION_MODEL:-qwen2.5vl:3b}
+      - AI_CONCURRENCY=${AI_CONCURRENCY:-1}
+      - AI_TEXT_CONTEXT=${AI_TEXT_CONTEXT:-8192}
+      - AI_IMAGE_CONTEXT=${AI_IMAGE_CONTEXT:-4096}
+      - AI_TEXT_TIMEOUT_MS=${AI_TEXT_TIMEOUT_MS:-120000}
+      - AI_IMAGE_TIMEOUT_MS=${AI_IMAGE_TIMEOUT_MS:-300000}
+      - AI_MAX_RETRIES=${AI_MAX_RETRIES:-1}
+      - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.6}
+      - AI_MAX_TEXT_CHARS=${AI_MAX_TEXT_CHARS:-32000}
+      - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-5}
+      - AI_IMAGE_MAX_WIDTH=${AI_IMAGE_MAX_WIDTH:-1280}
+      - AI_IMAGE_MAX_HEIGHT=${AI_IMAGE_MAX_HEIGHT:-1280}
+      - PROMPT_VERSION=${PROMPT_VERSION:-1}
+      - SCHEMA_VERSION=${SCHEMA_VERSION:-1}
+      - AI_CACHE_TTL_MS=${AI_CACHE_TTL_MS:-86400000}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ai-redis:
+        condition: service_healthy
+    # `internal` to reach ollama + ai-redis; `ai-net` so flat-finder-backend and
+    # the Personal-Site server can reach http://ai-worker:4030.
+    networks: [ internal, ai-net ]
+    # Loopback publish for host-side testing/curl; not required for app access.
+    ports:
+      - "127.0.0.1:4030:4030"
+    mem_limit: "${AI_WORKER_MEMORY_LIMIT:-1g}"
+    cpus: "${AI_WORKER_CPUS:-0.75}"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4030/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  ollama-data:
+  ai-redis-data:
+
+networks:
+  internal:
+  # Shared across compose projects; create once: `docker network create ai-net`.
+  # flat-finder + Personal-Site add this as an external network to reach ai-worker.
+  ai-net:
+    external: true

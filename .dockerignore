@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+test
+scripts
+ai-worker.env
+.env
+*.log
+README.md
