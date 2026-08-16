@@ -95,7 +95,27 @@ app.get('/ai/result/:key', asyncRoute(async (req, res) => {
   const job = await aiQueue.getJob(req.params.key);
   if (job) {
     const state = await job.getState();
-    return res.json({ key: req.params.key, status: state === 'completed' ? 'completed' : state === 'failed' ? 'failed' : 'pending' });
+    if (state === 'completed') {
+      const retained = job.returnvalue;
+      if (retained?.status === 'completed' && retained?.data) {
+        return res.json({ key: req.params.key, ...retained });
+      }
+
+      // Jobs produced by older worker versions retained only `{ ok: true }`.
+      // When their Redis result is absent, rerun from the original job payload
+      // rather than returning a payload-less terminal state to the browser.
+      const { kind, key, input } = job.data || {};
+      if (kind && key && input) {
+        await job.remove();
+        await enqueue(kind, key, input);
+        return res.json({ key: req.params.key, status: 'pending' });
+      }
+      return res.json({ key: req.params.key, status: 'failed', error: 'completed result is unavailable' });
+    }
+    if (state === 'failed') {
+      return res.json({ key: req.params.key, status: 'failed', error: job.failedReason || 'AI job failed' });
+    }
+    return res.json({ key: req.params.key, status: 'pending' });
   }
   res.json({ key: req.params.key, status: 'not_found' });
 }));

@@ -23,9 +23,13 @@ export function startWorker() {
         const { key, kind, input } = job.data;
         const result = await extract(kind, input);
         recordText(result.timings?.totalMs || 0);
-        await setResult(key, { status: 'completed', kind, ...result });
+        const stored = await setResult(key, { status: 'completed', kind, ...result });
         metrics.succeeded += 1;
-        return { ok: true };
+        // Keep the complete payload in BullMQ as a second durable result path.
+        // If the short-lived cache key is missing during a poll (restart, manual
+        // cache cleanup, or TTL race), callers can still receive the translation
+        // instead of seeing `completed` with no data forever.
+        return stored;
       } finally {
         metrics.processing -= 1;
       }
