@@ -14,6 +14,22 @@ if [ -d .git ]; then
   git pull --ff-only
 fi
 
+# A bind-mounted model directory keeps multi-gigabyte Ollama models off the
+# small system disk. Refuse to silently create the production path on `/` when
+# the expected data volume was not mounted after a reboot.
+ollama_data_path="$(sed -n 's/^OLLAMA_DATA_PATH=//p' ai-worker.env | tail -n 1)"
+if [ -n "$ollama_data_path" ]; then
+  if [[ "$ollama_data_path" != /* ]]; then
+    echo "OLLAMA_DATA_PATH must be an absolute host path." >&2
+    exit 1
+  fi
+  if [[ "$ollama_data_path" == /mnt/docker-data/* ]] && ! mountpoint -q /mnt/docker-data; then
+    echo "/mnt/docker-data is not mounted; refusing to store Ollama models on the root disk." >&2
+    exit 1
+  fi
+  mkdir -p "$ollama_data_path"
+fi
+
 docker network inspect ai-net >/dev/null 2>&1 || docker network create ai-net
 
 compose=(docker compose --env-file ai-worker.env)

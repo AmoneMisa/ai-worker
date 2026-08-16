@@ -161,6 +161,32 @@ chmod +x deploy.sh
 `AI_MODEL`, rebuilds the worker and verifies `/health`. Model and queue data are
 preserved in Docker volumes.
 
+For production hosts with a separate data disk, keep Ollama models off the
+system partition:
+
+```env
+OLLAMA_DATA_PATH=/mnt/docker-data/ollama
+```
+
+The Compose file bind-mounts that directory at `/root/.ollama`. When the
+variable is absent, it falls back to the managed `ollama-data` volume for local
+development. Deployment refuses to use a configured `/mnt/docker-data/...`
+path unless `/mnt/docker-data` is actually mounted, preventing model downloads
+from silently filling the root filesystem after a reboot.
+
+To migrate an existing production model before switching the variable:
+
+```bash
+docker compose --env-file ai-worker.env stop ai-worker ollama
+mkdir -p /mnt/docker-data/ollama
+rsync -aHAX --numeric-ids \
+  /var/lib/docker/volumes/ai-worker_ollama-data/_data/ \
+  /mnt/docker-data/ollama/
+```
+
+Start the stack and verify `docker exec ai-worker-ollama-1 ollama list` before
+removing the old `ai-worker_ollama-data` volume.
+
 ### GitHub Actions
 
 The workflow deploys pushes to `master` by running

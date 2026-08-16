@@ -5,7 +5,9 @@ services:
     image: ollama/ollama
     restart: unless-stopped
     volumes:
-      - ollama-data:/root/.ollama
+      # Production points OLLAMA_DATA_PATH at the separately mounted data disk.
+      # When unset, local development keeps using the managed named volume.
+      - ${OLLAMA_DATA_PATH:-ollama-data}:/root/.ollama
     environment:
       # CPU-only: keep inference serial so it can't monopolize all vCPUs (spec §3).
       - OLLAMA_NUM_PARALLEL=1
