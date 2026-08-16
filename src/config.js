@@ -36,7 +36,7 @@ export const config = {
   // Bump either when the prompt/schema changes so the result cache invalidates
   // (spec §28/§29). Stored on every cached result for provenance.
   promptVersion: num(process.env.PROMPT_VERSION, 1),
-  schemaVersion: num(process.env.SCHEMA_VERSION, 1),
+  schemaVersion: num(process.env.SCHEMA_VERSION, 2),
 
   // Result cache retention (24h default). Keyed by model+prompt+input hash.
   cacheTtlMs: num(process.env.AI_CACHE_TTL_MS, 24 * 60 * 60 * 1000),

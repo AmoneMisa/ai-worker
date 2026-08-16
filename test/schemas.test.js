@@ -10,12 +10,25 @@ import {
   VacancySchema,
   sanitizeVacancy,
 } from '../src/schemas/vacancy.js';
+import {
+  translationJsonSchema,
+  TranslationSchema,
+  sanitizeTranslation,
+} from '../src/schemas/translation.js';
 
 test('structured-output schemas require every declared field', () => {
   assert.deepEqual([...apartmentJsonSchema.required].sort(), Object.keys(apartmentJsonSchema.properties).sort());
   assert.deepEqual([...vacancyJsonSchema.required].sort(), Object.keys(vacancyJsonSchema.properties).sort());
+  assert.deepEqual([...translationJsonSchema.required].sort(), Object.keys(translationJsonSchema.properties).sort());
   assert.equal(apartmentJsonSchema.additionalProperties, false);
   assert.equal(vacancyJsonSchema.additionalProperties, false);
+  assert.equal(translationJsonSchema.additionalProperties, false);
+});
+
+test('translation validation rejects an empty result through confidence', () => {
+  const value = sanitizeTranslation(TranslationSchema.parse({ translatedText: '   ', sourceLanguage: 'uz', confidence: 0.9 }));
+  assert.equal(value.translatedText, '');
+  assert.equal(value.confidence, 0);
 });
 test('apartment validation degrades impossible values safely', () => {
   const parsed = ApartmentSchema.parse({ rooms: 99, areaM2: -5, floor: 12, floorsTotal: 9, confidence: 2 });

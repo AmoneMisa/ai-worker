@@ -7,7 +7,7 @@ import { metrics } from '../util/metrics.js';
 // enforced by the single Worker (concurrency=1), so photos can't starve text —
 // priority orders them (spec §4).
 export const QUEUE_NAME = 'ai';
-export const PRIORITY = { vacancy: 1, apartment: 2, photo: 3 };
+export const PRIORITY = { vacancy: 1, apartment: 2, translation: 3, photo: 4 };
 
 export const aiQueue = new Queue(QUEUE_NAME, {
   connection: makeConnection(),

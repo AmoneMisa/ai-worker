@@ -5,8 +5,10 @@ import { structured } from '../ollama/client.js';
 import { config } from '../config.js';
 import { apartmentJsonSchema, ApartmentSchema, sanitizeApartment } from '../schemas/apartment.js';
 import { vacancyJsonSchema, VacancySchema, sanitizeVacancy } from '../schemas/vacancy.js';
+import { translationJsonSchema, TranslationSchema, sanitizeTranslation } from '../schemas/translation.js';
 import { APARTMENT_SYSTEM, apartmentPayload } from '../prompts/apartment.js';
 import { VACANCY_SYSTEM, vacancyPayload } from '../prompts/vacancy.js';
+import { TRANSLATION_SYSTEM, translationPayload } from '../prompts/translation.js';
 
 const KINDS = {
   apartment: {
@@ -22,6 +24,13 @@ const KINDS = {
     sanitize: sanitizeVacancy,
     system: VACANCY_SYSTEM,
     payload: vacancyPayload,
+  },
+  translation: {
+    jsonSchema: translationJsonSchema,
+    zod: TranslationSchema,
+    sanitize: sanitizeTranslation,
+    system: TRANSLATION_SYSTEM,
+    payload: translationPayload,
   },
 };
 

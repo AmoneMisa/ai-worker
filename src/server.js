@@ -57,7 +57,9 @@ app.get('/metrics', (_req, res) => res.json(snapshot()));
 app.post('/ai/extract', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.textEnabled) return res.json({ status: 'disabled' });
   const { kind, rawText, knownFacts, meta } = req.body || {};
-  if (kind !== 'apartment' && kind !== 'vacancy') return res.status(400).json({ error: 'kind must be apartment|vacancy' });
+  if (!['apartment', 'vacancy', 'translation'].includes(kind)) {
+    return res.status(400).json({ error: 'kind must be apartment|vacancy|translation' });
+  }
   if (!rawText || typeof rawText !== 'string') return res.status(400).json({ error: 'missing rawText' });
   if (rawText.length > config.maxTextChars) {
     return res.status(413).json({ error: `rawText exceeds ${config.maxTextChars} characters` });
@@ -75,13 +77,17 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
     metrics.cacheHits += 1;
     return res.json({ key, cached: true, ...cached });
   }
-  const promptText = redactContacts(normalizeText(rawText));
+  // Translation must preserve the complete original description. Extraction
+  // jobs still redact contact details because those fields are deterministic.
+  const promptText = kind === 'translation'
+    ? normalizeText(rawText)
+    : redactContacts(normalizeText(rawText));
   await enqueue(kind, key, { text: promptText, knownFacts: knownFacts || {}, meta: meta || {} });
   res.json({ status: 'pending', key });
 }));
 
 app.get('/ai/result/:key', asyncRoute(async (req, res) => {
-  if (!/^(apartment|vacancy)-[a-f0-9]{32}$/.test(req.params.key)) {
+  if (!/^(apartment|vacancy|translation)-[a-f0-9]{32}$/.test(req.params.key)) {
     return res.status(400).json({ error: 'invalid key' });
   }
   const cached = await getResult(req.params.key);
