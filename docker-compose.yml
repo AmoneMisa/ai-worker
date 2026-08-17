@@ -43,7 +43,7 @@ services:
   # caches on purpose: those use allkeys-lru eviction, which would silently drop
   # queued jobs. noeviction + AOF keeps the queue durable.
   ai-redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
     volumes:
