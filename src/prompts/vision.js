@@ -8,6 +8,8 @@ Rules:
 - Not seeing something is NOT evidence it is absent. Use value:null, confidence:0, evidence:[] when unknown.
 - Use false only when an image directly proves absence, which is rare; otherwise null.
 - bathroomsVisible and bedroomsVisible are the minimum number of distinct rooms that can be visually established across the provided photos; avoid double-counting the same room from different angles.
+- bathroomLayoutVisible may be combined, separate, mixed, or null. combined means toilet and bath/shower are visibly in the same room; separate means distinct toilet and bath/shower rooms are both visually established; mixed means both layouts are visibly present. Do not infer whole-apartment layout from one bathroom photo.
+- gasWaterHeaterVisible means a gas-fired instantaneous water heater / gas column is visibly identifiable. waterBoilerVisible means an electric/storage water heater is visibly identifiable. Do not confuse a boiler with a kitchen hood, cabinet, meter, radiator, or central-heating appliance unless visually clear.
 - furnished means clearly furnished living/bedroom spaces, not a single stray object.
 - renovationLevel may be one of: basic, standard, modern, luxury, unfinished, needs_renovation, or null.
 - Do not use listing text or assumptions to fill gaps.
