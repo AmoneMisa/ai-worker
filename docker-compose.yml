@@ -33,7 +33,7 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
     entrypoint: ["/bin/ollama"]
-    command: ["pull", "${AI_MODEL:-qwen2.5:3b}"]
+    command: ["pull", "${AI_MODEL:-qwen3.5:2b}"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -70,12 +70,14 @@ services:
       - AI_VISION_ENABLED=${AI_VISION_ENABLED:-false}
       - AI_OCR_ENABLED=${AI_OCR_ENABLED:-false}
       - AI_API_KEY=${AI_API_KEY:-}
-      - AI_MODEL=${AI_MODEL:-qwen2.5:3b}
-      - AI_VISION_MODEL=${AI_VISION_MODEL:-qwen2.5vl:3b}
+      - AI_MODEL=${AI_MODEL:-qwen3.5:2b}
+      - AI_VISION_MODEL=${AI_VISION_MODEL:-qwen3.5:2b}
+      - AI_THINK=${AI_THINK:-false}
       - AI_CONCURRENCY=${AI_CONCURRENCY:-1}
       - AI_TEXT_CONTEXT=${AI_TEXT_CONTEXT:-8192}
       - AI_IMAGE_CONTEXT=${AI_IMAGE_CONTEXT:-4096}
       - AI_TEXT_TIMEOUT_MS=${AI_TEXT_TIMEOUT_MS:-120000}
+      - AI_TRANSLATION_TIMEOUT_MS=${AI_TRANSLATION_TIMEOUT_MS:-180000}
       - AI_IMAGE_TIMEOUT_MS=${AI_IMAGE_TIMEOUT_MS:-300000}
       - AI_MAX_RETRIES=${AI_MAX_RETRIES:-1}
       - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.6}
@@ -86,6 +88,7 @@ services:
       - PROMPT_VERSION=${PROMPT_VERSION:-1}
       - SCHEMA_VERSION=${SCHEMA_VERSION:-3}
       - AI_CACHE_TTL_MS=${AI_CACHE_TTL_MS:-86400000}
+      - AI_TRANSLATION_CACHE_TTL_MS=${AI_TRANSLATION_CACHE_TTL_MS:-604800000}
     depends_on:
       ollama:
         condition: service_healthy
