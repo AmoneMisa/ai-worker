@@ -1,7 +1,6 @@
 // Ollama-backed AIClient (spec §39). Business logic depends only on this
-// interface — structured({ schema, systemPrompt, payload, images, ... }) — so the
-// engine (Ollama/Qwen today) can later be swapped for another local model or a
-// cloud fallback without touching the parsers.
+// interface so the engine (Ollama/Qwen today) can later be swapped without
+// touching deterministic parsers.
 import { config } from '../config.js';
 import { log } from '../util/logger.js';
 
@@ -38,9 +37,23 @@ async function chat(body, timeoutMs) {
   }
 }
 
-// Returns the parsed JSON object the model produced. Structured Outputs only —
-// we pass a JSON Schema as `format`, never parse markdown (spec §12). Validation
-// (zod + business rules) happens in the caller (spec §13).
+function timings(data) {
+  return {
+    totalMs: (data.total_duration || 0) / 1e6,
+    ollamaDurationMs: (data.total_duration || 0) / 1e6,
+    roundTripMs: data._roundTripMs || 0,
+    loadMs: (data.load_duration || 0) / 1e6,
+    promptEvalMs: (data.prompt_eval_duration || 0) / 1e6,
+    evalMs: (data.eval_duration || 0) / 1e6,
+    promptEvalCount: data.prompt_eval_count || 0,
+    evalCount: data.eval_count || 0,
+  };
+}
+
+// Structured Outputs are used for apartment/vacancy extraction where schema
+// validation is valuable. Translation intentionally does NOT use this path: on
+// CPU the JSON schema materially increases prompt-prefill cost for a task whose
+// natural output is already plain text.
 export async function structured({ schema, systemPrompt, payload, images, model, contextSize, timeoutMs }) {
   const userMsg = { role: 'user', content: typeof payload === 'string' ? payload : JSON.stringify(payload) };
   if (Array.isArray(images) && images.length) userMsg.images = images; // base64 strings
@@ -64,24 +77,47 @@ export async function structured({ schema, systemPrompt, payload, images, model,
     throw err;
   }
   try {
-    return {
-      data: JSON.parse(content),
-      timings: {
-        totalMs: (data.total_duration || 0) / 1e6,
-        ollamaDurationMs: (data.total_duration || 0) / 1e6,
-        roundTripMs: data._roundTripMs || 0,
-        loadMs: (data.load_duration || 0) / 1e6,
-        promptEvalMs: (data.prompt_eval_duration || 0) / 1e6,
-        evalMs: (data.eval_duration || 0) / 1e6,
-        promptEvalCount: data.prompt_eval_count || 0,
-        evalCount: data.eval_count || 0,
-      },
-    };
+    return { data: JSON.parse(content), timings: timings(data) };
   } catch {
     const err = new Error('INVALID_AI_JSON: not JSON');
     err.code = 'INVALID_AI_JSON';
     throw err;
   }
+}
+
+// Interactive translation gets a deliberately tiny instruction prompt and no
+// JSON schema. The original listing text is sent directly as the user message,
+// reducing the ~1k-token structured prompt overhead visible on CPU-only Qwen.
+export async function translate({ text, targetLanguage, model, contextSize, timeoutMs }) {
+  const language = String(targetLanguage || 'Russian').trim() || 'Russian';
+  const systemPrompt = [
+    `Translate the user's complete text into ${language}.`,
+    'Preserve line breaks, names, addresses, monetary amounts, measurements, URLs, usernames and phone numbers.',
+    'Understand informal Uzbek in Latin or Cyrillic and common real-estate shorthand.',
+    'Do not summarize, omit, explain or add information. Output only the translated text.',
+  ].join(' ');
+
+  const data = await chat(
+    {
+      model: model || config.model,
+      stream: false,
+      think: config.think,
+      options: { temperature: 0, num_ctx: contextSize || config.textContext },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: String(text || '') },
+      ],
+    },
+    timeoutMs || config.translationTimeoutMs,
+  );
+
+  const content = String(data?.message?.content || '').trim();
+  if (!content) {
+    const err = new Error('INVALID_TRANSLATION: empty content');
+    err.code = 'INVALID_TRANSLATION';
+    throw err;
+  }
+  return { data: content, timings: timings(data) };
 }
 
 // Health probe (spec §31). Never throws — returns a boolean.
