@@ -9,11 +9,12 @@ import { enqueue, aiQueue } from './queue/queue.js';
 import { startWorker } from './queue/worker.js';
 import { ollamaHealthy } from './ollama/client.js';
 import { requestTranslation, translatorHealthy } from './services/translator.js';
+import { analyzePhotos } from './services/vision.js';
 import { metrics, snapshot, recordJobTiming } from './util/metrics.js';
 import { cacheRedis } from './redis.js';
 
 const app = express();
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '8mb' }));
 
 const asyncRoute = (handler) => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
@@ -41,6 +42,8 @@ app.get('/health', asyncRoute(async (_req, res) => {
     enabled: config.enabled,
     ai,
     translator,
+    vision: config.visionEnabled,
+    visionProviders: config.visionProviders,
     redis: cacheRedis.status === 'ready',
     model: config.model,
     translationModel: 'facebook/m2m100_418M',
@@ -53,6 +56,28 @@ app.get('/ready', (_req, res) => {
 });
 
 app.get('/metrics', (_req, res) => res.json(snapshot()));
+
+// Remote photo enrichment. Images may be public URLs or data:image/... URLs.
+// The provider chain is synchronous and intentionally outside BullMQ/Ollama, so
+// photo analysis cannot block Qwen text parsing. Results are cached by photo set.
+app.post('/ai/vision', asyncRoute(async (req, res) => {
+  if (!config.enabled || !config.visionEnabled) return res.json({ status: 'disabled' });
+  const { images } = req.body || {};
+  if (!Array.isArray(images) || !images.length) return res.status(400).json({ error: 'images must be a non-empty array' });
+  if (images.length > config.maxPhotosPerListing) {
+    return res.status(400).json({ error: `maximum ${config.maxPhotosPerListing} images per listing` });
+  }
+  try {
+    const result = await analyzePhotos(images);
+    metrics.imageCount += 1;
+    metrics.succeeded += 1;
+    return res.json({ status: 'completed', ...result });
+  } catch (error) {
+    metrics.failed += 1;
+    log.warn('vision analysis failed', { error: error.message });
+    return res.status(503).json({ status: 'failed', error: 'vision providers unavailable' });
+  }
+}));
 
 app.post('/ai/extract', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.textEnabled) return res.json({ status: 'disabled' });
@@ -80,10 +105,6 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
   }
 
   const normalizedText = normalizeText(rawText);
-
-  // Interactive translation is intentionally outside BullMQ/Qwen. The dedicated
-  // 418M seq2seq service is much cheaper on CPU and cannot block background
-  // apartment/vacancy inference. If it is unavailable, retain Qwen as a fallback.
   if (kind === 'translation') {
     const targetLanguage = facts.targetLanguage;
     try {
@@ -136,9 +157,7 @@ app.get('/ai/result/:key', asyncRoute(async (req, res) => {
     const state = await job.getState();
     if (state === 'completed') {
       const retained = job.returnvalue;
-      if (retained?.status === 'completed' && retained?.data) {
-        return res.json({ key: req.params.key, ...retained });
-      }
+      if (retained?.status === 'completed' && retained?.data) return res.json({ key: req.params.key, ...retained });
       const { kind, key, input } = job.data || {};
       if (kind && key && input) {
         await job.remove();
@@ -147,9 +166,7 @@ app.get('/ai/result/:key', asyncRoute(async (req, res) => {
       }
       return res.json({ key: req.params.key, status: 'failed', error: 'completed result is unavailable' });
     }
-    if (state === 'failed') {
-      return res.json({ key: req.params.key, status: 'failed', error: job.failedReason || 'AI job failed' });
-    }
+    if (state === 'failed') return res.json({ key: req.params.key, status: 'failed', error: job.failedReason || 'AI job failed' });
     return res.json({ key: req.params.key, status: 'pending' });
   }
   res.json({ key: req.params.key, status: 'not_found' });
@@ -173,11 +190,7 @@ async function shutdown(signal) {
   stopping = true;
   log.info('shutting down', { signal });
   server.close();
-  await Promise.allSettled([
-    worker?.close(),
-    aiQueue.close(),
-    cacheRedis.quit(),
-  ]);
+  await Promise.allSettled([worker?.close(), aiQueue.close(), cacheRedis.quit()]);
   process.exit(0);
 }
 
