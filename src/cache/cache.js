@@ -19,6 +19,9 @@ export async function setResult(key, record) {
     schemaVersion: config.schemaVersion,
     parsedAt: new Date().toISOString(),
   };
-  await cacheRedis.set(PREFIX + key, JSON.stringify(value), 'PX', config.cacheTtlMs);
+  const ttlMs = record.kind === 'translation'
+    ? config.translationCacheTtlMs
+    : config.cacheTtlMs;
+  await cacheRedis.set(PREFIX + key, JSON.stringify(value), 'PX', ttlMs);
   return value;
 }
