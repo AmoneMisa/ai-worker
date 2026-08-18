@@ -8,6 +8,22 @@ import { visionPrompt } from '../prompts/vision.js';
 
 const cooldownUntil = new Map();
 const CACHE_PREFIX = 'ai:vision:';
+let active = 0;
+const waiters = [];
+
+async function acquire() {
+  if (active < config.visionConcurrency) {
+    active += 1;
+    return;
+  }
+  await new Promise((resolve) => waiters.push(resolve));
+  active += 1;
+}
+
+function release() {
+  active = Math.max(0, active - 1);
+  waiters.shift()?.();
+}
 
 function cacheKey(images) {
   const h = createHash('sha256');
@@ -46,6 +62,7 @@ async function fetchJson(url, options, provider) {
       cooldownUntil.set(provider, Date.now() + config.visionCooldownMs);
       throw new Error(`${provider.toUpperCase()}_TIMEOUT`);
     }
+    if (!error?.status) recordVisionProvider(provider, { ok: false, ms: Date.now() - started });
     throw error;
   } finally {
     clearTimeout(timer);
@@ -66,6 +83,8 @@ function validate(value) {
 
 async function groq(images) {
   if (!config.groqApiKey) throw new Error('GROQ_NOT_CONFIGURED');
+  // Current Qwen 3.6 model card is stricter than some older Groq vision docs:
+  // cap at three images so requests remain valid even while docs disagree.
   const selected = images.slice(0, 3);
   const content = [{ type: 'text', text: visionPrompt(selected.map((x) => x.id)) }];
   for (const image of selected) content.push({ type: 'image_url', image_url: { url: image.url } });
@@ -93,8 +112,8 @@ function mergePhotoResults(items) {
       if (!current || current.value == null || candidate.confidence > current.confidence) {
         out[field] = candidate;
       } else if (typeof candidate.value === 'number' && typeof current.value === 'number') {
-        // Cloudflare sees one image at a time; use the strongest per-image minimum,
-        // never sum rooms because different photos may show the same room twice.
+        // Single-photo fallback cannot prove distinct rooms across photos, so keep
+        // only the strongest visible minimum instead of summing possibly duplicated rooms.
         out[field] = candidate.value > current.value ? candidate : current;
       } else if (candidate.value === true && current.value === true) {
         out[field] = {
@@ -133,7 +152,7 @@ async function cloudflare(images) {
 
 const PROVIDERS = { groq, cloudflare };
 
-export async function analyzePhotos(inputImages) {
+async function analyzeNow(inputImages) {
   const images = normalizeImages(Array.isArray(inputImages) ? inputImages : []);
   if (!images.length) throw new Error('VISION_NO_VALID_IMAGES');
 
@@ -159,4 +178,13 @@ export async function analyzePhotos(inputImages) {
   const error = new Error(`VISION_PROVIDERS_FAILED: ${errors.join(' | ') || 'none available'}`);
   error.code = 'VISION_PROVIDERS_FAILED';
   throw error;
+}
+
+export async function analyzePhotos(inputImages) {
+  await acquire();
+  try {
+    return await analyzeNow(inputImages);
+  } finally {
+    release();
+  }
 }
