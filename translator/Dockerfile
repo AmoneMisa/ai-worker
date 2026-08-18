@@ -7,7 +7,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 RUN pip install --no-cache-dir \
     ctranslate2==4.7.2 \
-    "transformers[torch]==4.53.3" \
+    "transformers[torch]==4.48.2" \
     sentencepiece==0.2.1
 
 RUN mkdir -p /model/ct2 /model/tokenizer && \
@@ -35,7 +35,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 RUN pip install --no-cache-dir \
     ctranslate2==4.7.2 \
-    transformers==4.53.3 \
+    transformers==4.48.2 \
     sentencepiece==0.2.1 \
     flask==3.1.1 \
     gunicorn==23.0.0
