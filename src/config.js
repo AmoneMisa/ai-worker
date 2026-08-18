@@ -21,9 +21,8 @@ export const config = {
   translationServiceTimeoutMs: num(process.env.TRANSLATION_SERVICE_TIMEOUT_MS, 30_000),
   translationFallbackToQwen: bool(process.env.TRANSLATION_FALLBACK_TO_QWEN, true),
 
-  // Remote vision is intentionally independent of Ollama/Qwen. Provider order is
-  // configurable and providers enter cooldown after transient failures/rate limits.
   visionProviders: list(process.env.VISION_PROVIDERS, 'groq,cloudflare'),
+  visionConcurrency: Math.max(1, num(process.env.VISION_CONCURRENCY, 1)),
   visionProviderTimeoutMs: num(process.env.VISION_PROVIDER_TIMEOUT_MS, 30_000),
   visionCooldownMs: num(process.env.VISION_COOLDOWN_MS, 5 * 60_000),
   visionCacheTtlMs: num(process.env.VISION_CACHE_TTL_MS, 30 * 24 * 60 * 60_000),
