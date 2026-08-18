@@ -4,11 +4,12 @@ import { config } from './config.js';
 import { log } from './util/logger.js';
 import { extractionKey, normalizeText } from './util/hash.js';
 import { redactContacts } from './util/privacy.js';
-import { getResult } from './cache/cache.js';
+import { getResult, setResult } from './cache/cache.js';
 import { enqueue, aiQueue } from './queue/queue.js';
 import { startWorker } from './queue/worker.js';
 import { ollamaHealthy } from './ollama/client.js';
-import { metrics, snapshot } from './util/metrics.js';
+import { requestTranslation, translatorHealthy } from './services/translator.js';
+import { metrics, snapshot, recordJobTiming } from './util/metrics.js';
 import { cacheRedis } from './redis.js';
 
 const app = express();
@@ -25,22 +26,24 @@ function authorized(value) {
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
-// The port is loopback/private-network only, and an optional shared key adds a
-// second boundary for deployments where multiple compose projects share ai-net.
 app.use('/ai', (req, res, next) => {
   if (!authorized(req.get('x-ai-key'))) return res.status(401).json({ error: 'unauthorized' });
   next();
 });
 
-// Health (spec §31): reports whether Ollama is reachable, but the service itself
-// is "up" regardless so the apps can tell AI-available from AI-unavailable.
 app.get('/health', asyncRoute(async (_req, res) => {
+  const [ai, translator] = await Promise.all([
+    config.enabled ? ollamaHealthy() : false,
+    translatorHealthy(),
+  ]);
   res.json({
     ok: true,
     enabled: config.enabled,
-    ai: config.enabled ? await ollamaHealthy() : false,
+    ai,
+    translator,
     redis: cacheRedis.status === 'ready',
     model: config.model,
+    translationModel: 'facebook/m2m100_418M',
   });
 }));
 
@@ -51,9 +54,6 @@ app.get('/ready', (_req, res) => {
 
 app.get('/metrics', (_req, res) => res.json(snapshot()));
 
-// Submit text for enrichment. Returns a cached result immediately if we've seen
-// this exact input before, otherwise enqueues and returns { status: 'pending' }.
-// The caller polls /ai/result/:key (or picks it up on its next refresh).
 app.post('/ai/extract', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.textEnabled) return res.json({ status: 'disabled' });
   const { kind, rawText, knownFacts, meta } = req.body || {};
@@ -71,18 +71,57 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
     return res.status(400).json({ error: 'meta must be an object' });
   }
 
-  const key = extractionKey(kind, rawText, knownFacts || {});
+  const facts = knownFacts || {};
+  const key = extractionKey(kind, rawText, facts);
   const cached = await getResult(key);
   if (cached) {
     metrics.cacheHits += 1;
     return res.json({ key, cached: true, ...cached });
   }
-  // Translation must preserve the complete original description. Extraction
-  // jobs still redact contact details because those fields are deterministic.
-  const promptText = kind === 'translation'
-    ? normalizeText(rawText)
-    : redactContacts(normalizeText(rawText));
-  await enqueue(kind, key, { text: promptText, knownFacts: knownFacts || {}, meta: meta || {} });
+
+  const normalizedText = normalizeText(rawText);
+
+  // Interactive translation is intentionally outside BullMQ/Qwen. The dedicated
+  // 418M seq2seq service is much cheaper on CPU and cannot block background
+  // apartment/vacancy inference. If it is unavailable, retain Qwen as a fallback.
+  if (kind === 'translation') {
+    const targetLanguage = facts.targetLanguage;
+    try {
+      const translated = await requestTranslation(normalizedText, targetLanguage);
+      const totalMs = translated.timings?.roundTripMs || translated.timings?.totalMs || 0;
+      recordJobTiming('translation', { ollamaMs: 0, totalMs });
+      metrics.succeeded += 1;
+      const now = new Date().toISOString();
+      const stored = await setResult(key, {
+        status: 'completed',
+        kind,
+        data: translated.data,
+        confidence: translated.data.confidence,
+        lowConfidence: false,
+        engine: translated.engine,
+        model: 'facebook/m2m100_418M',
+        timings: {
+          ...translated.timings,
+          queueWaitMs: 0,
+          queuedAt: now,
+          startedAt: now,
+          finishedAt: new Date().toISOString(),
+          totalWithQueueMs: totalMs,
+        },
+      });
+      return res.json({ key, cached: false, ...stored });
+    } catch (error) {
+      log.warn('dedicated translation unavailable', { code: error?.code, msg: error?.message });
+      if (!config.translationFallbackToQwen) {
+        return res.status(503).json({ status: 'failed', key, error: 'translation service unavailable' });
+      }
+      await enqueue(kind, key, { text: normalizedText, knownFacts: facts, meta: meta || {} });
+      return res.json({ status: 'pending', key, fallback: 'qwen' });
+    }
+  }
+
+  const promptText = redactContacts(normalizedText);
+  await enqueue(kind, key, { text: promptText, knownFacts: facts, meta: meta || {} });
   res.json({ status: 'pending', key });
 }));
 
@@ -100,10 +139,6 @@ app.get('/ai/result/:key', asyncRoute(async (req, res) => {
       if (retained?.status === 'completed' && retained?.data) {
         return res.json({ key: req.params.key, ...retained });
       }
-
-      // Jobs produced by older worker versions retained only `{ ok: true }`.
-      // When their Redis result is absent, rerun from the original job payload
-      // rather than returning a payload-less terminal state to the browser.
       const { kind, key, input } = job.data || {};
       if (kind && key && input) {
         await job.remove();
