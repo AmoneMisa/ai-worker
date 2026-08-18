@@ -8,6 +8,7 @@ import { log } from '../util/logger.js';
 async function chat(body, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const startedAt = Date.now();
   try {
     const res = await fetch(`${config.ollamaUrl}/api/chat`, {
       method: 'POST',
@@ -21,7 +22,9 @@ async function chat(body, timeoutMs) {
       err.code = 'OLLAMA_UNAVAILABLE';
       throw err;
     }
-    return await res.json();
+    const data = await res.json();
+    data._roundTripMs = Date.now() - startedAt;
+    return data;
   } catch (e) {
     if (e.name === 'AbortError') {
       const err = new Error('OLLAMA_TIMEOUT');
@@ -46,6 +49,7 @@ export async function structured({ schema, systemPrompt, payload, images, model,
     {
       model: model || config.model,
       stream: false,
+      think: config.think,
       format: schema,
       options: { temperature: 0, num_ctx: contextSize || config.textContext },
       messages: [{ role: 'system', content: systemPrompt }, userMsg],
@@ -60,7 +64,19 @@ export async function structured({ schema, systemPrompt, payload, images, model,
     throw err;
   }
   try {
-    return { data: JSON.parse(content), timings: { totalMs: (data.total_duration || 0) / 1e6, evalCount: data.eval_count } };
+    return {
+      data: JSON.parse(content),
+      timings: {
+        totalMs: (data.total_duration || 0) / 1e6,
+        ollamaDurationMs: (data.total_duration || 0) / 1e6,
+        roundTripMs: data._roundTripMs || 0,
+        loadMs: (data.load_duration || 0) / 1e6,
+        promptEvalMs: (data.prompt_eval_duration || 0) / 1e6,
+        evalMs: (data.eval_duration || 0) / 1e6,
+        promptEvalCount: data.prompt_eval_count || 0,
+        evalCount: data.eval_count || 0,
+      },
+    };
   } catch {
     const err = new Error('INVALID_AI_JSON: not JSON');
     err.code = 'INVALID_AI_JSON';
