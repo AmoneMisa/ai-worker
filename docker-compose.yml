@@ -14,7 +14,7 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=5m
     networks: [ internal ]
-    cpus: "${OLLAMA_CPUS:-3.0}"
+    cpus: "${OLLAMA_CPUS:-5.0}"
     mem_limit: "${OLLAMA_MEMORY_LIMIT:-8g}"
     healthcheck:
       test: ["CMD", "ollama", "list"]
