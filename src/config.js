@@ -2,58 +2,53 @@
 // boot with nothing set; production overrides come from ai-worker.env.
 const num = (v, d) => (v == null || v === '' ? d : Number(v));
 const bool = (v, d) => (v == null || v === '' ? d : v === 'true' || v === '1');
+const list = (v, d) => String(v || d).split(',').map((x) => x.trim()).filter(Boolean);
 
 export const config = {
   port: num(process.env.PORT, 4030),
   redisUrl: process.env.REDIS_URL || 'redis://ai-redis:6379',
 
-  // Feature flags — turning AI off must leave the apps working on deterministic
-  // parsers alone (spec §54). text/vision can be toggled independently.
   enabled: bool(process.env.AI_ENABLED, true),
   textEnabled: bool(process.env.AI_TEXT_ENABLED, true),
   visionEnabled: bool(process.env.AI_VISION_ENABLED, false),
 
   ollamaUrl: process.env.OLLAMA_URL || 'http://ollama:11434',
-  // Production uses the Qwen 3.5 2B model. Keep the code/compose fallback aligned
-  // with sample.env so a missing AI_MODEL never silently falls back to Qwen 2.5.
   model: process.env.AI_MODEL || 'qwen3.5:2b',
   think: bool(process.env.AI_THINK, false),
   visionModel: process.env.AI_VISION_MODEL || 'qwen3.5:2b',
 
-  // Translation runs in a separate small seq2seq service so interactive requests
-  // never occupy the Qwen/BullMQ inference slot. Qwen remains an optional fallback
-  // if that service is temporarily unavailable.
   translationUrl: (process.env.TRANSLATION_URL || 'http://translator:4040').replace(/\/$/, ''),
   translationServiceTimeoutMs: num(process.env.TRANSLATION_SERVICE_TIMEOUT_MS, 30_000),
   translationFallbackToQwen: bool(process.env.TRANSLATION_FALLBACK_TO_QWEN, true),
 
-  // CPU-only Qwen inference is serial. One at a time, everything else waits in queue.
-  concurrency: num(process.env.AI_CONCURRENCY, 1),
+  visionProviders: list(process.env.VISION_PROVIDERS, 'groq,cloudflare'),
+  visionConcurrency: Math.max(1, num(process.env.VISION_CONCURRENCY, 1)),
+  visionProviderTimeoutMs: num(process.env.VISION_PROVIDER_TIMEOUT_MS, 30_000),
+  visionCooldownMs: num(process.env.VISION_COOLDOWN_MS, 5 * 60_000),
+  visionCacheTtlMs: num(process.env.VISION_CACHE_TTL_MS, 30 * 24 * 60 * 60_000),
+  groqApiKey: process.env.GROQ_API_KEY || '',
+  groqVisionModel: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b',
+  cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
+  cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_AUTH_TOKEN || '',
+  cloudflareVisionModel: process.env.CLOUDFLARE_VISION_MODEL || '@cf/meta/llama-3.2-11b-vision-instruct',
 
+  concurrency: num(process.env.AI_CONCURRENCY, 1),
   textContext: num(process.env.AI_TEXT_CONTEXT, 8192),
   imageContext: num(process.env.AI_IMAGE_CONTEXT, 4096),
   textTimeoutMs: num(process.env.AI_TEXT_TIMEOUT_MS, 120_000),
-  // Used only by the Qwen fallback path; the dedicated translator has its own
-  // much shorter service timeout above.
   translationTimeoutMs: num(process.env.AI_TRANSLATION_TIMEOUT_MS, 180_000),
   imageTimeoutMs: num(process.env.AI_IMAGE_TIMEOUT_MS, 300_000),
 
   maxRetries: num(process.env.AI_MAX_RETRIES, 1),
-  maxPhotosPerListing: num(process.env.AI_MAX_PHOTOS_PER_LISTING, 5),
+  maxPhotosPerListing: num(process.env.AI_MAX_PHOTOS_PER_LISTING, 4),
   imageMaxWidth: num(process.env.AI_IMAGE_MAX_WIDTH, 1280),
   imageMaxHeight: num(process.env.AI_IMAGE_MAX_HEIGHT, 1280),
   minConfidence: num(process.env.AI_MIN_CONFIDENCE, 0.6),
   maxTextChars: num(process.env.AI_MAX_TEXT_CHARS, 32_000),
   apiKey: process.env.AI_API_KEY || '',
 
-  // Bump either when the prompt/schema changes so the result cache invalidates
-  // (spec §28/§29). Stored on every cached result for provenance.
   promptVersion: num(process.env.PROMPT_VERSION, 1),
   schemaVersion: num(process.env.SCHEMA_VERSION, 3),
-
-  // Background enrichment is cheap to recompute after a day. User-triggered
-  // translations are more valuable to keep because the same shared listing can
-  // be opened repeatedly, so translations get a longer cache TTL by default.
   cacheTtlMs: num(process.env.AI_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
   translationCacheTtlMs: num(process.env.AI_TRANSLATION_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000),
 };
