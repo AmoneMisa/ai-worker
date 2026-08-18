@@ -14,9 +14,11 @@ export const config = {
   visionEnabled: bool(process.env.AI_VISION_ENABLED, false),
 
   ollamaUrl: process.env.OLLAMA_URL || 'http://ollama:11434',
-  model: process.env.AI_MODEL || 'qwen2.5:3b',
-  think: false,
-  visionModel: process.env.AI_VISION_MODEL || 'qwen2.5vl:3b',
+  // Production uses the Qwen 3.5 2B model. Keep the code/compose fallback aligned
+  // with sample.env so a missing AI_MODEL never silently falls back to Qwen 2.5.
+  model: process.env.AI_MODEL || 'qwen3.5:2b',
+  think: bool(process.env.AI_THINK, false),
+  visionModel: process.env.AI_VISION_MODEL || 'qwen3.5:2b',
 
   // CPU-only: inference is serial. One at a time, everything else waits in queue.
   concurrency: num(process.env.AI_CONCURRENCY, 1),
@@ -42,6 +44,9 @@ export const config = {
   promptVersion: num(process.env.PROMPT_VERSION, 1),
   schemaVersion: num(process.env.SCHEMA_VERSION, 3),
 
-  // Result cache retention (24h default). Keyed by model+prompt+input hash.
+  // Background enrichment is cheap to recompute after a day. User-triggered
+  // translations are more valuable to keep because the same shared listing can
+  // be opened repeatedly, so translations get a longer cache TTL by default.
   cacheTtlMs: num(process.env.AI_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
+  translationCacheTtlMs: num(process.env.AI_TRANSLATION_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000),
 };
