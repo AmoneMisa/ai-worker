@@ -38,12 +38,16 @@ export async function extract(kind, input) {
   const k = KINDS[kind];
   if (!k) throw Object.assign(new Error(`unknown kind ${kind}`), { code: 'BAD_KIND' });
 
+  const timeoutMs = kind === 'translation'
+    ? config.translationTimeoutMs
+    : config.textTimeoutMs;
+
   const { data: raw, timings } = await structured({
     schema: k.jsonSchema,
     systemPrompt: k.system,
     payload: k.payload(input),
     contextSize: config.textContext,
-    timeoutMs: config.textTimeoutMs,
+    timeoutMs,
   });
 
   const parsed = k.zod.safeParse(raw);
