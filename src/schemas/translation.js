@@ -20,7 +20,7 @@ export const TranslationSchema = z.object({
 });
 
 export function sanitizeTranslation(value) {
-  value.translatedText = value.translatedText.trim().slice(0, 20_000);
+  value.translatedText = value.translatedText.trim().slice(0, 32_000);
   if (!value.translatedText) value.confidence = 0;
   return value;
 }
