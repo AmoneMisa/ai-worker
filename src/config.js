@@ -20,14 +20,21 @@ export const config = {
   think: bool(process.env.AI_THINK, false),
   visionModel: process.env.AI_VISION_MODEL || 'qwen3.5:2b',
 
-  // CPU-only: inference is serial. One at a time, everything else waits in queue.
+  // Translation runs in a separate small seq2seq service so interactive requests
+  // never occupy the Qwen/BullMQ inference slot. Qwen remains an optional fallback
+  // if that service is temporarily unavailable.
+  translationUrl: (process.env.TRANSLATION_URL || 'http://translator:4040').replace(/\/$/, ''),
+  translationServiceTimeoutMs: num(process.env.TRANSLATION_SERVICE_TIMEOUT_MS, 30_000),
+  translationFallbackToQwen: bool(process.env.TRANSLATION_FALLBACK_TO_QWEN, true),
+
+  // CPU-only Qwen inference is serial. One at a time, everything else waits in queue.
   concurrency: num(process.env.AI_CONCURRENCY, 1),
 
   textContext: num(process.env.AI_TEXT_CONTEXT, 8192),
   imageContext: num(process.env.AI_IMAGE_CONTEXT, 4096),
   textTimeoutMs: num(process.env.AI_TEXT_TIMEOUT_MS, 120_000),
-  // Full translations emit substantially more tokens than structured extraction,
-  // so give interactive translation jobs their own, longer inference budget.
+  // Used only by the Qwen fallback path; the dedicated translator has its own
+  // much shorter service timeout above.
   translationTimeoutMs: num(process.env.AI_TRANSLATION_TIMEOUT_MS, 180_000),
   imageTimeoutMs: num(process.env.AI_IMAGE_TIMEOUT_MS, 300_000),
 

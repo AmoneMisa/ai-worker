@@ -14,7 +14,7 @@ export async function getResult(key) {
 export async function setResult(key, record) {
   const value = {
     ...record,
-    model: config.model,
+    model: record.model || config.model,
     promptVersion: config.promptVersion,
     schemaVersion: config.schemaVersion,
     parsedAt: new Date().toISOString(),

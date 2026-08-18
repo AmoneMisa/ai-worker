@@ -13,6 +13,7 @@ jobs:
   deploy:
     environment: Production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +24,6 @@ jobs:
           host: ${{ vars.SERVER_HOST }}
           username: ${{ vars.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 35m
           script: |
             bash ~/opt/ai-worker/deploy.sh

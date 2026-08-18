@@ -1,20 +1,17 @@
 services:
-  # Local LLM runtime. Private — only ai-worker (same internal network) reaches
-  # it; never published to the host or the shared ai-net (spec §34/§35).
+  # Local LLM runtime for semantic extraction/validation only. Translation is
+  # handled by the much smaller seq2seq service below.
   ollama:
     image: ollama/ollama
     restart: unless-stopped
     volumes:
-      # Production points OLLAMA_DATA_PATH at the separately mounted data disk.
-      # When unset, local development keeps using the managed named volume.
       - ${OLLAMA_DATA_PATH:-ollama-data}:/root/.ollama
     environment:
-      # CPU-only: keep inference serial so it can't monopolize all vCPUs (spec §3).
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=5m
     networks: [ internal ]
-    cpus: "${OLLAMA_CPUS:-5.0}"
+    cpus: "${OLLAMA_CPUS:-4.0}"
     mem_limit: "${OLLAMA_MEMORY_LIMIT:-8g}"
     healthcheck:
       test: ["CMD", "ollama", "list"]
@@ -23,9 +20,6 @@ services:
       retries: 10
       start_period: 20s
 
-  # One-shot model preloader, invoked explicitly by deploy.sh. Keeping it behind
-  # a profile means a normal `docker compose up` does not leave a stopped helper
-  # container in the project.
   ollama-pull:
     image: ollama/ollama
     profiles: [ setup ]
@@ -39,9 +33,28 @@ services:
         condition: service_healthy
     networks: [ internal ]
 
-  # Dedicated Redis for the BullMQ queue + result cache. Separate from the apps'
-  # caches on purpose: those use allkeys-lru eviction, which would silently drop
-  # queued jobs. noeviction + AOF keeps the queue durable.
+  # Fast interactive translation: M2M100 418M converted to CTranslate2 INT8.
+  # It has its own CPU budget and never occupies the Qwen/BullMQ slot.
+  translator:
+    build:
+      context: ./translator
+    restart: unless-stopped
+    init: true
+    environment:
+      - TRANSLATOR_THREADS=${TRANSLATOR_THREADS:-2}
+      - TRANSLATOR_MAX_SOURCE_TOKENS=${TRANSLATOR_MAX_SOURCE_TOKENS:-420}
+      - OMP_NUM_THREADS=${TRANSLATOR_THREADS:-2}
+    networks: [ internal ]
+    cpus: "${TRANSLATOR_CPUS:-1.5}"
+    mem_limit: "${TRANSLATOR_MEMORY_LIMIT:-2g}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4040/health', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Dedicated Redis for BullMQ + result cache.
   ai-redis:
     image: redis:8-alpine
     restart: unless-stopped
@@ -64,6 +77,9 @@ services:
     init: true
     environment:
       - OLLAMA_URL=http://ollama:11434
+      - TRANSLATION_URL=http://translator:4040
+      - TRANSLATION_SERVICE_TIMEOUT_MS=${TRANSLATION_SERVICE_TIMEOUT_MS:-30000}
+      - TRANSLATION_FALLBACK_TO_QWEN=${TRANSLATION_FALLBACK_TO_QWEN:-true}
       - REDIS_URL=redis://ai-redis:6379
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
@@ -92,16 +108,15 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      translator:
+        condition: service_healthy
       ai-redis:
         condition: service_healthy
-    # `internal` to reach ollama + ai-redis; `ai-net` so flat-finder-backend and
-    # the Personal-Site server can reach http://ai-worker:4030.
     networks: [ internal, ai-net ]
-    # Loopback publish for host-side testing/curl; not required for app access.
     ports:
       - "127.0.0.1:4030:4030"
     mem_limit: "${AI_WORKER_MEMORY_LIMIT:-1g}"
-    cpus: "${AI_WORKER_CPUS:-0.75}"
+    cpus: "${AI_WORKER_CPUS:-0.5}"
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4030/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -116,7 +131,5 @@ volumes:
 
 networks:
   internal:
-  # Shared across compose projects; create once: `docker network create ai-net`.
-  # flat-finder + Personal-Site add this as an external network to reach ai-worker.
   ai-net:
     external: true
