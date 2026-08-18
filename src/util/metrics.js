@@ -14,18 +14,31 @@ export const metrics = {
   queueWaitMsTotal: 0,
   queueWaitCount: 0,
   byKind: {},
+  visionProviders: {},
 };
 
 function kindMetrics(kind) {
   if (!metrics.byKind[kind]) {
-    metrics.byKind[kind] = {
-      count: 0,
-      queueWaitMsTotal: 0,
-      ollamaMsTotal: 0,
-      totalMsTotal: 0,
-    };
+    metrics.byKind[kind] = { count: 0, queueWaitMsTotal: 0, ollamaMsTotal: 0, totalMsTotal: 0 };
   }
   return metrics.byKind[kind];
+}
+
+function providerMetrics(provider) {
+  if (!metrics.visionProviders[provider]) {
+    metrics.visionProviders[provider] = { attempts: 0, succeeded: 0, failed: 0, rateLimited: 0, timeouts: 0, latencyMsTotal: 0 };
+  }
+  return metrics.visionProviders[provider];
+}
+
+export function recordVisionProvider(provider, { ok = false, ms = 0, status = 0, timeout = false } = {}) {
+  const item = providerMetrics(provider);
+  item.attempts += 1;
+  item.latencyMsTotal += Math.max(0, Number(ms) || 0);
+  if (ok) item.succeeded += 1;
+  else item.failed += 1;
+  if (status === 429) item.rateLimited += 1;
+  if (timeout) item.timeouts += 1;
 }
 
 export function recordText(ms) {
@@ -51,13 +64,16 @@ export function snapshot() {
     avgOllamaMs: item.count ? Math.round(item.ollamaMsTotal / item.count) : 0,
     avgTotalMs: item.count ? Math.round(item.totalMsTotal / item.count) : 0,
   }]));
+  const visionProviders = Object.fromEntries(Object.entries(metrics.visionProviders).map(([provider, item]) => [provider, {
+    ...item,
+    avgLatencyMs: item.attempts ? Math.round(item.latencyMsTotal / item.attempts) : 0,
+  }]));
   return {
     ...metrics,
     byKind,
+    visionProviders,
     avgTextMs: metrics.textCount ? Math.round(metrics.textMsTotal / metrics.textCount) : 0,
     avgImageMs: metrics.imageCount ? Math.round(metrics.imageMsTotal / metrics.imageCount) : 0,
-    avgQueueWaitMs: metrics.queueWaitCount
-      ? Math.round(metrics.queueWaitMsTotal / metrics.queueWaitCount)
-      : 0,
+    avgQueueWaitMs: metrics.queueWaitCount ? Math.round(metrics.queueWaitMsTotal / metrics.queueWaitCount) : 0,
   };
 }
