@@ -24,6 +24,9 @@ export const config = {
   textContext: num(process.env.AI_TEXT_CONTEXT, 8192),
   imageContext: num(process.env.AI_IMAGE_CONTEXT, 4096),
   textTimeoutMs: num(process.env.AI_TEXT_TIMEOUT_MS, 120_000),
+  // Full translations emit substantially more tokens than structured extraction,
+  // so give interactive translation jobs their own, longer inference budget.
+  translationTimeoutMs: num(process.env.AI_TRANSLATION_TIMEOUT_MS, 180_000),
   imageTimeoutMs: num(process.env.AI_IMAGE_TIMEOUT_MS, 300_000),
 
   maxRetries: num(process.env.AI_MAX_RETRIES, 1),
