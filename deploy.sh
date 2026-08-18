@@ -14,9 +14,6 @@ if [ -d .git ]; then
   git pull --ff-only
 fi
 
-# A bind-mounted model directory keeps multi-gigabyte Ollama models off the
-# small system disk. Refuse to silently create the production path on `/` when
-# the expected data volume was not mounted after a reboot.
 ollama_data_path="$(sed -n 's/^OLLAMA_DATA_PATH=//p' ai-worker.env | tail -n 1)"
 if [ -n "$ollama_data_path" ]; then
   if [[ "$ollama_data_path" != /* ]]; then
@@ -37,31 +34,35 @@ compose=(docker compose --env-file ai-worker.env)
 "${compose[@]}" pull ollama ai-redis
 "${compose[@]}" up -d ollama ai-redis
 
-# Pull before starting the worker so the first production job never triggers a
-# multi-gigabyte model download. `ollama pull` is idempotent on later deploys.
+# Pull Qwen before starting the worker so parsing never triggers a model download.
 "${compose[@]}" --profile setup run --rm ollama-pull
 
-"${compose[@]}" up -d --build ai-worker
+# The first translator build downloads and converts facebook/m2m100_418M to
+# CTranslate2 INT8. Docker caches that expensive model layer on subsequent deploys.
+"${compose[@]}" build translator ai-worker
+"${compose[@]}" up -d translator ai-worker
 "${compose[@]}" ps
 
-# `docker compose up -d` returns as soon as the container starts, before Node
-# necessarily binds the port. A curl in that small window can fail with
-# connection reset even though the service becomes healthy a moment later.
 health_url="http://127.0.0.1:4030/health"
 ready_url="http://127.0.0.1:4030/ready"
 
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 40); do
   if curl --fail --silent --max-time 5 "$ready_url" >/dev/null 2>&1; then
-    curl --fail --silent --show-error --max-time 10 "$health_url"
-    echo
-    exit 0
+    health="$(curl --fail --silent --show-error --max-time 10 "$health_url")"
+    echo "$health"
+    # The worker can technically fall back to Qwen, but a deploy of this feature
+    # is not considered healthy until the dedicated translator is reachable.
+    if echo "$health" | grep -q '"translator":true'; then
+      exit 0
+    fi
+    echo "ai-worker is ready but translator is not healthy yet (${attempt}/40)..."
+  else
+    echo "Waiting for ai-worker readiness (${attempt}/40)..."
   fi
-
-  echo "Waiting for ai-worker readiness (${attempt}/30)..."
   sleep 3
 done
 
-echo "ai-worker did not become ready; recent container logs:" >&2
+echo "ai-worker/translator did not become ready; recent container logs:" >&2
 "${compose[@]}" ps >&2
-"${compose[@]}" logs --tail 100 ai-worker >&2
+"${compose[@]}" logs --tail 100 ai-worker translator >&2
 exit 1
