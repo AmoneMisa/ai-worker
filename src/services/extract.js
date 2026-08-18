@@ -1,14 +1,12 @@
-// Extraction pipeline (spec §13): LLM -> JSON -> zod validate -> business
-// sanitize -> return. Never returns raw model output; a bad field degrades to
-// null rather than failing the record.
-import { structured } from '../ollama/client.js';
+// Extraction pipeline: apartments/vacancies use structured JSON + zod validation.
+// Interactive translation uses a lighter plain-text Ollama path to avoid the
+// structured-schema prompt overhead on CPU-only inference.
+import { structured, translate } from '../ollama/client.js';
 import { config } from '../config.js';
 import { apartmentJsonSchema, ApartmentSchema, sanitizeApartment } from '../schemas/apartment.js';
 import { vacancyJsonSchema, VacancySchema, sanitizeVacancy } from '../schemas/vacancy.js';
-import { translationJsonSchema, TranslationSchema, sanitizeTranslation } from '../schemas/translation.js';
 import { APARTMENT_SYSTEM, apartmentPayload } from '../prompts/apartment.js';
 import { VACANCY_SYSTEM, vacancyPayload } from '../prompts/vacancy.js';
-import { TRANSLATION_SYSTEM, translationPayload } from '../prompts/translation.js';
 
 const KINDS = {
   apartment: {
@@ -25,29 +23,37 @@ const KINDS = {
     system: VACANCY_SYSTEM,
     payload: vacancyPayload,
   },
-  translation: {
-    jsonSchema: translationJsonSchema,
-    zod: TranslationSchema,
-    sanitize: sanitizeTranslation,
-    system: TRANSLATION_SYSTEM,
-    payload: translationPayload,
-  },
 };
 
 export async function extract(kind, input) {
+  if (kind === 'translation') {
+    const { data: translatedText, timings } = await translate({
+      text: input?.text || '',
+      targetLanguage: input?.knownFacts?.targetLanguage || 'Russian',
+      contextSize: config.textContext,
+      timeoutMs: config.translationTimeoutMs,
+    });
+    return {
+      data: {
+        translatedText,
+        sourceLanguage: null,
+        confidence: 1,
+      },
+      confidence: 1,
+      lowConfidence: false,
+      timings,
+    };
+  }
+
   const k = KINDS[kind];
   if (!k) throw Object.assign(new Error(`unknown kind ${kind}`), { code: 'BAD_KIND' });
-
-  const timeoutMs = kind === 'translation'
-    ? config.translationTimeoutMs
-    : config.textTimeoutMs;
 
   const { data: raw, timings } = await structured({
     schema: k.jsonSchema,
     systemPrompt: k.system,
     payload: k.payload(input),
     contextSize: config.textContext,
-    timeoutMs,
+    timeoutMs: config.textTimeoutMs,
   });
 
   const parsed = k.zod.safeParse(raw);
