@@ -101,9 +101,53 @@ def chunk_line(line: str) -> list[str]:
     return chunks or [line]
 
 
+# Uzbek Cyrillic -> Latin. M2M100's Uzbek training data is overwhelmingly Latin
+# script, so Cyrillic Uzbek fed in as `uz` comes back as transliterated nonsense
+# (e.g. "хонали" -> "холодильные"). Transliterating first puts the text in the
+# script the model actually learned. Only the model input is converted; the
+# original text is still what we store and display.
+UZ_CYR_TO_LAT = [
+    # Digraphs and specials first — order matters.
+    ('ё', 'yo'), ('ж', 'j'), ('ц', 's'), ('ч', 'ch'), ('ш', 'sh'), ('щ', 'sh'),
+    ('ю', 'yu'), ('я', 'ya'), ('ў', "o'"), ('қ', 'q'), ('ғ', "g'"), ('ҳ', 'h'),
+    ('а', 'a'), ('б', 'b'), ('в', 'v'), ('г', 'g'), ('д', 'd'), ('е', 'e'),
+    ('з', 'z'), ('и', 'i'), ('й', 'y'), ('к', 'k'), ('л', 'l'), ('м', 'm'),
+    ('н', 'n'), ('о', 'o'), ('п', 'p'), ('р', 'r'), ('с', 's'), ('т', 't'),
+    ('у', 'u'), ('ф', 'f'), ('х', 'x'), ('ъ', "'"), ('ь', ''), ('ы', 'i'),
+    ('э', 'e'),
+]
+
+
+def uz_cyrillic_to_latin(text: str) -> str:
+    out = []
+    for ch in text:
+        lower = ch.lower()
+        replacement = None
+        for cyr, lat in UZ_CYR_TO_LAT:
+            if lower == cyr:
+                replacement = lat
+                break
+        if replacement is None:
+            out.append(ch)
+        elif ch.isupper() and replacement:
+            out.append(replacement[0].upper() + replacement[1:])
+        else:
+            out.append(replacement)
+    return ''.join(out)
+
+
+def is_cyrillic(text: str) -> bool:
+    cyr = len(re.findall(r'[а-яёқғҳў]', text, flags=re.IGNORECASE))
+    lat = len(re.findall(r'[a-z]', text, flags=re.IGNORECASE))
+    return cyr > lat
+
+
 def translate_text(text: str, source: str, target: str) -> str:
     if source == target:
         return text
+
+    if source == 'uz' and is_cyrillic(text):
+        text = uz_cyrillic_to_latin(text)
 
     tokenizer.src_lang = source
     original_lines = text.split('\n')
