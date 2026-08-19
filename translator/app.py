@@ -34,6 +34,18 @@ UZ_LATIN = {
     'joylashgan', 'mebel', 'texnika', 'oila', 'oilaga', 'faqat', 'manzil',
     'mojal', 'orientir', 'komissiyasiz', 'depozit', 'predoplata', 'narxi', 'kelishiladi',
 }
+# Uzbek Cyrillic often appears without the distinctive қ/ғ/ҳ/ў letters, so script
+# detection alone misclassifies perfectly normal listings as Russian. Keep this
+# vocabulary domain-specific and require multiple signals before overriding ru.
+UZ_CYRILLIC = {
+    'ижара', 'ижарага', 'берилади', 'бераман', 'сотилади', 'хона', 'хонали', 'уй',
+    'квартира', 'кават', 'қават', 'янги', 'таъмир', 'ремонт', 'бор', 'йук', 'йўқ',
+    'учун', 'билан', 'махалла', 'маҳалла', 'туман', 'тумани', 'шахар', 'шаҳар',
+    'шахрида', 'шаҳрида', 'куча', 'кучаси', 'кучасида', 'кўчаси', 'кўчасида',
+    'ой', 'олдиндан', 'шароит', 'жойлашган', 'мебель', 'техника', 'оила', 'оилага',
+    'факат', 'фақат', 'манзил', 'мулжал', 'мўлжал', 'нархи', 'келишилади',
+    'якин', 'яқин', 'ёнида', 'рупарасида', 'рўпарасида',
+}
 EN_WORDS = {
     'the', 'and', 'for', 'with', 'apartment', 'rent', 'rental', 'bedroom', 'rooms',
     'floor', 'building', 'new', 'renovated', 'deposit', 'month', 'owner', 'located',
@@ -48,16 +60,16 @@ def detect_language(text: str) -> tuple[str, float]:
     if not letters:
         return 'uz', 0.55
 
+    words = {w.strip("'’`ʻʼ-") for w in letters}
     cyr = len(re.findall(r'[а-яёқғҳў]', value, flags=re.IGNORECASE))
     lat = len(re.findall(r'[a-z]', value, flags=re.IGNORECASE))
     if cyr > lat:
-        if re.search(r'[қғҳў]', value, flags=re.IGNORECASE):
-            return 'uz', 0.95
-        # Most Cyrillic listings on the current sources are Russian. Uzbek Cyrillic
-        # without its distinctive letters is rare enough to let the fallback handle it.
-        return 'ru', 0.88
+        distinctive_uz = bool(re.search(r'[қғҳў]', value, flags=re.IGNORECASE))
+        uz_cyr_score = len(words & UZ_CYRILLIC)
+        if distinctive_uz or uz_cyr_score >= 2:
+            return 'uz', min(0.98, 0.82 + uz_cyr_score * 0.03)
+        return 'ru', 0.82
 
-    words = {w.strip("'’`ʻʼ-") for w in letters}
     uz_score = len(words & UZ_LATIN)
     en_score = len(words & EN_WORDS)
     if en_score >= 2 and en_score > uz_score * 1.5:
