@@ -82,8 +82,8 @@ app.post('/ai/vision', asyncRoute(async (req, res) => {
 app.post('/ai/extract', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.textEnabled) return res.json({ status: 'disabled' });
   const { kind, rawText, knownFacts, meta } = req.body || {};
-  if (!['apartment', 'vacancy', 'translation'].includes(kind)) {
-    return res.status(400).json({ error: 'kind must be apartment|vacancy|translation' });
+  if (!['apartment', 'vacancy', 'candidate', 'translation'].includes(kind)) {
+    return res.status(400).json({ error: 'kind must be apartment|vacancy|candidate|translation' });
   }
   if (!rawText || typeof rawText !== 'string') return res.status(400).json({ error: 'missing rawText' });
   if (rawText.length > config.maxTextChars) {
@@ -147,7 +147,7 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
 }));
 
 app.get('/ai/result/:key', asyncRoute(async (req, res) => {
-  if (!/^(apartment|vacancy|translation)-[a-f0-9]{32}$/.test(req.params.key)) {
+  if (!/^(apartment|vacancy|candidate|translation)-[a-f0-9]{32}$/.test(req.params.key)) {
     return res.status(400).json({ error: 'invalid key' });
   }
   const cached = await getResult(req.params.key);
