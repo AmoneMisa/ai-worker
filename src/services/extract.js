@@ -1,4 +1,4 @@
-// Extraction pipeline: apartments/vacancies use structured JSON + zod validation.
+// Extraction pipeline: apartments/vacancies/candidates use structured JSON + zod validation.
 // Interactive translation prefers the dedicated M2M100 service and falls back to
 // the local Qwen model when the service is unavailable or returns a suspicious
 // identity translation.
@@ -7,8 +7,10 @@ import { config } from '../config.js';
 import { requestTranslation } from './translator.js';
 import { apartmentJsonSchema, ApartmentSchema, sanitizeApartment } from '../schemas/apartment.js';
 import { vacancyJsonSchema, VacancySchema, sanitizeVacancy } from '../schemas/vacancy.js';
+import { candidateJsonSchema, CandidateSchema, sanitizeCandidate } from '../schemas/candidate.js';
 import { APARTMENT_SYSTEM, apartmentPayload } from '../prompts/apartment.js';
 import { VACANCY_SYSTEM, vacancyPayload } from '../prompts/vacancy.js';
+import { CANDIDATE_SYSTEM, candidatePayload } from '../prompts/candidate.js';
 
 const KINDS = {
   apartment: {
@@ -24,6 +26,13 @@ const KINDS = {
     sanitize: sanitizeVacancy,
     system: VACANCY_SYSTEM,
     payload: vacancyPayload,
+  },
+  candidate: {
+    jsonSchema: candidateJsonSchema,
+    zod: CandidateSchema,
+    sanitize: sanitizeCandidate,
+    system: CANDIDATE_SYSTEM,
+    payload: candidatePayload,
   },
 };
 
