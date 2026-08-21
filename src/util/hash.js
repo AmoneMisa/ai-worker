@@ -27,11 +27,20 @@ function stable(value) {
   return value;
 }
 
-// Cache key = model + promptVersion + schemaVersion + kind + normalized input
-// (spec §28). Any change to the model or prompts invalidates old results.
+// Candidate semantics evolve independently from apartment/vacancy extraction.
+// Keep a kind-specific version so improving multilingual CV parsing does not
+// invalidate every other AI cache entry.
+const KIND_PROMPT_VERSION = {
+  candidate: 2,
+};
+
+// Cache key = model + promptVersion + schemaVersion + kind + kindPromptVersion
+// + normalized input. Any relevant prompt/model/schema change invalidates the
+// corresponding old result without forcing unrelated kinds to re-run.
 export function extractionKey(kind, text, knownFacts = {}) {
   const h = createHash('sha256');
-  h.update(`${config.model}:v${config.promptVersion}:s${config.schemaVersion}:${kind}\n`);
+  const kindPromptVersion = KIND_PROMPT_VERSION[kind] || 1;
+  h.update(`${config.model}:v${config.promptVersion}:s${config.schemaVersion}:${kind}:k${kindPromptVersion}\n`);
   h.update(normalizeText(text));
   h.update('\n');
   h.update(JSON.stringify(stable(knownFacts)));
