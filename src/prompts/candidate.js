@@ -49,8 +49,9 @@ Important rules:
   max=null. Do not convert currencies.
 - country/city/district must describe where the candidate is actually located or
   explicitly wants to work. Do not treat Telegram channel/source metadata as
-  proof of residence. `Локація #Canada` means country=Canada, not Ukraine merely
-  because it appeared in a Ukrainian channel.
+  proof of residence. Use an ISO-3166 alpha-2 country code when known (UZ, UA,
+  KZ, KG, RO, CA, US, etc.). `Локація #Canada` therefore means country=CA, not
+  UA merely because it appeared in a Ukrainian channel.
 - remote is true/false ONLY if remote/office preference is explicit; otherwise
   null. Absence of the word remote NEVER means false.
 - relocationReady is true/false only when explicit; otherwise null.
