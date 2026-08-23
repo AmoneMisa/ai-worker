@@ -1,46 +1,161 @@
-import { Queue } from 'bullmq';
-import { makeConnection } from '../redis.js';
 import { config } from '../config.js';
-import { metrics } from '../util/metrics.js';
+import { extract } from '../services/extract.js';
+import { setResult } from '../cache/cache.js';
+import { metrics, recordJobTiming, recordQueueWait, recordText } from '../util/metrics.js';
+import { log } from '../util/logger.js';
 
-// One queue, job types distinguished by name. Physical inference concurrency is
-// enforced by the single Worker (concurrency=1), so photos can't starve text —
-// priority orders them (spec §4).
-export const QUEUE_NAME = 'ai';
-// User-triggered translations must jump ahead of background feed enrichment.
-// With one CPU inference slot, putting translations behind vacancy/apartment
-// batches made the modal appear stuck even though its job was merely queued.
 export const PRIORITY = { translation: 1, vacancy: 2, apartment: 3, photo: 4 };
 
-export const aiQueue = new Queue(QUEUE_NAME, {
-  connection: makeConnection(),
-  defaultJobOptions: {
-    attempts: config.maxRetries + 1, // 1 try + N retries (spec §14)
-    backoff: { type: 'fixed', delay: 3000 },
-    removeOnComplete: 500,
-    removeOnFail: 200,
-  },
-});
+const jobs = new Map();
+const waiting = [];
+let active = 0;
+let started = false;
+let stopping = false;
+let sequence = 0;
+const idleWaiters = [];
 
-// jobId = cache key → BullMQ dedupes concurrent identical requests for free.
-export async function enqueue(kind, key, input) {
-  const existing = await aiQueue.getJob(key);
-  if (existing) {
-    const state = await existing.getState();
-    if (!['completed', 'failed'].includes(state)) {
-      // Active/retrying jobs are already in progress and cannot be moved between
-      // priority sets. Reprioritize only old queued jobs created by a previous
-      // deployment where translation used the lower background priority.
-      if (state === 'waiting' || state === 'prioritized') {
-        await existing.changePriority({ priority: PRIORITY[kind] || 5 });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sortWaiting() {
+  waiting.sort((a, b) => {
+    const priority = (PRIORITY[a.kind] || 5) - (PRIORITY[b.kind] || 5);
+    return priority || a.sequence - b.sequence;
+  });
+}
+
+function resolveIdle() {
+  if (active || waiting.length) return;
+  while (idleWaiters.length) idleWaiters.shift()?.();
+}
+
+async function run(job) {
+  active += 1;
+  job.state = 'active';
+  const startedAtMs = Date.now();
+  const queueWaitMs = Math.max(0, startedAtMs - job.timestamp);
+  recordQueueWait(queueWaitMs, job.kind);
+  metrics.processing += 1;
+
+  try {
+    let lastError;
+    const attempts = Math.max(1, config.maxRetries + 1);
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        if (job.kind === 'photo') {
+          throw Object.assign(new Error('IMAGE_NOT_IMPLEMENTED'), { code: 'IMAGE_NOT_IMPLEMENTED' });
+        }
+        const result = await extract(job.kind, job.input);
+        const finishedAtMs = Date.now();
+        const processMs = Math.max(0, finishedAtMs - startedAtMs);
+        const totalMs = Math.max(0, finishedAtMs - job.timestamp);
+        const ollamaDurationMs = result.timings?.ollamaDurationMs ?? result.timings?.totalMs ?? 0;
+        recordText(result.timings?.totalMs || 0);
+        recordJobTiming(job.kind, { ollamaMs: ollamaDurationMs, totalMs });
+        const timings = {
+          ...(result.timings || {}),
+          queueWaitMs,
+          processMs,
+          totalWithQueueMs: totalMs,
+          queuedAt: new Date(job.timestamp).toISOString(),
+          startedAt: new Date(startedAtMs).toISOString(),
+          finishedAt: new Date(finishedAtMs).toISOString(),
+        };
+        const stored = await setResult(job.key, { status: 'completed', kind: job.kind, ...result, timings });
+        job.state = 'completed';
+        job.result = stored;
+        metrics.succeeded += 1;
+        return;
+      } catch (error) {
+        lastError = error;
+        if (error?.code === 'SCHEMA_VALIDATION_FAILED') metrics.schemaFailures += 1;
+        if (attempt < attempts) {
+          metrics.retries += 1;
+          log.warn('ai job retrying', { id: job.key, attempt, code: error?.code, msg: error?.message });
+          await sleep(3000);
+          continue;
+        }
       }
-      return { job: existing, created: false };
     }
-    // The result cache is checked before enqueue. If it is gone but BullMQ still
-    // retains an old terminal job, remove that tombstone so inference can run.
-    await existing.remove();
+
+    metrics.failed += 1;
+    job.state = 'failed';
+    job.error = lastError?.message || 'AI job failed';
+    log.error('ai job failed', { id: job.key, code: lastError?.code, msg: lastError?.message });
+    try {
+      await setResult(job.key, {
+        status: 'failed',
+        kind: job.kind,
+        errorCode: lastError?.code || 'ERROR',
+        error: job.error,
+      });
+    } catch (error) {
+      log.error('failed to persist failure', { error: error.message });
+    }
+  } finally {
+    metrics.processing -= 1;
+    active = Math.max(0, active - 1);
+    pump();
+    resolveIdle();
   }
-  const job = await aiQueue.add(kind, { kind, key, input }, { jobId: key, priority: PRIORITY[kind] || 5 });
+}
+
+function pump() {
+  if (!started || stopping) return;
+  while (active < Math.max(1, config.concurrency) && waiting.length) {
+    const job = waiting.shift();
+    if (!job || job.state !== 'waiting') continue;
+    void run(job);
+  }
+}
+
+export function startQueue() {
+  started = true;
+  stopping = false;
+  pump();
+  log.info('ai worker started', { concurrency: config.concurrency, model: config.model, queue: 'memory' });
+}
+
+export async function enqueue(kind, key, input) {
+  const existing = jobs.get(key);
+  if (existing && ['waiting', 'active'].includes(existing.state)) {
+    return { job: existing, created: false };
+  }
+  if (existing) jobs.delete(key);
+
+  const job = {
+    kind,
+    key,
+    input,
+    state: 'waiting',
+    timestamp: Date.now(),
+    sequence: sequence += 1,
+    result: null,
+    error: null,
+  };
+  jobs.set(key, job);
+  waiting.push(job);
+  sortWaiting();
   metrics.queued += 1;
+  pump();
   return { job, created: true };
+}
+
+export function getJobStatus(key) {
+  const job = jobs.get(key);
+  if (!job) return null;
+  return {
+    state: job.state,
+    result: job.result,
+    error: job.error,
+    kind: job.kind,
+    input: job.input,
+  };
+}
+
+export async function closeQueue() {
+  stopping = true;
+  if (!active) return;
+  await new Promise((resolve) => idleWaiters.push(resolve));
 }
