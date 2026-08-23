@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { config } from '../config.js';
-import { cacheRedis } from '../redis.js';
+import { memoryGet, memorySet } from '../cache/memory.js';
 import { log } from '../util/logger.js';
 import { recordVisionProvider } from '../util/metrics.js';
 import { VisionSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
@@ -83,8 +83,6 @@ function validate(value) {
 
 async function groq(images) {
   if (!config.groqApiKey) throw new Error('GROQ_NOT_CONFIGURED');
-  // Current Qwen 3.6 model card is stricter than some older Groq vision docs:
-  // cap at three images so requests remain valid even while docs disagree.
   const selected = images.slice(0, 3);
   const content = [{ type: 'text', text: visionPrompt(selected.map((x) => x.id)) }];
   for (const image of selected) content.push({ type: 'image_url', image_url: { url: image.url } });
@@ -112,8 +110,6 @@ function mergePhotoResults(items) {
       if (!current || current.value == null || candidate.confidence > current.confidence) {
         out[field] = candidate;
       } else if (typeof candidate.value === 'number' && typeof current.value === 'number') {
-        // Single-photo fallback cannot prove distinct rooms across photos, so keep
-        // only the strongest visible minimum instead of summing possibly duplicated rooms.
         out[field] = candidate.value > current.value ? candidate : current;
       } else if (candidate.value === true && current.value === true) {
         out[field] = {
@@ -157,8 +153,8 @@ async function analyzeNow(inputImages) {
   if (!images.length) throw new Error('VISION_NO_VALID_IMAGES');
 
   const key = cacheKey(images.map((x) => `${x.id}:${x.url}`));
-  const cached = await cacheRedis.get(CACHE_PREFIX + key);
-  if (cached) return { cached: true, ...JSON.parse(cached) };
+  const cached = memoryGet(CACHE_PREFIX + key);
+  if (cached) return { cached: true, ...cached };
 
   const errors = [];
   for (const provider of config.visionProviders) {
@@ -168,7 +164,7 @@ async function analyzeNow(inputImages) {
     try {
       const data = await run(images);
       const record = { provider, data, analyzedAt: new Date().toISOString() };
-      await cacheRedis.set(CACHE_PREFIX + key, JSON.stringify(record), 'PX', config.visionCacheTtlMs);
+      memorySet(CACHE_PREFIX + key, record, config.visionCacheTtlMs);
       return { cached: false, ...record };
     } catch (error) {
       errors.push(`${provider}:${error.message}`);
