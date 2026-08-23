@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.14}
     restart: unless-stopped
     volumes:
       - ${OLLAMA_DATA_PATH:-ollama-data}:/root/.ollama
@@ -19,7 +19,7 @@ services:
       start_period: 20s
 
   ollama-pull:
-    image: ollama/ollama
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.14}
     profiles: [ setup ]
     restart: "no"
     environment:
@@ -60,8 +60,7 @@ services:
       - TRANSLATION_FALLBACK_TO_QWEN=${TRANSLATION_FALLBACK_TO_QWEN:-true}
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
-      - AI_VISION_ENABLED=${AI_VISION_ENABLED:-false}
-      - AI_OCR_ENABLED=${AI_OCR_ENABLED:-false}
+      - AI_VISION_ENABLED=${AI_VISION_ENABLED:-true}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_MODEL=${AI_MODEL:-qwen3.5:2b}
       - AI_VISION_MODEL=${AI_VISION_MODEL:-qwen3.5:2b}
