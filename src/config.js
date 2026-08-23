@@ -1,12 +1,11 @@
-// Central config, all env-driven (spec §32). Sensible defaults let the service
-// boot with nothing set; production overrides come from ai-worker.env.
+// Central config, all env-driven. Sensible defaults let the service boot with
+// nothing set; production overrides come from ai-worker.env.
 const num = (v, d) => (v == null || v === '' ? d : Number(v));
 const bool = (v, d) => (v == null || v === '' ? d : v === 'true' || v === '1');
 const list = (v, d) => String(v || d).split(',').map((x) => x.trim()).filter(Boolean);
 
 export const config = {
   port: num(process.env.PORT, 4030),
-  redisUrl: process.env.REDIS_URL || 'redis://ai-redis:6379',
 
   enabled: bool(process.env.AI_ENABLED, true),
   textEnabled: bool(process.env.AI_TEXT_ENABLED, true),
