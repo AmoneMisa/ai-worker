@@ -2,16 +2,16 @@ import express from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 import { log } from './util/logger.js';
-import { extractionKey, normalizeText } from './util/hash.js';
-import { redactContacts } from './util/privacy.js';
-import { getResult, setResult } from './cache/cache.js';
-import { enqueue, getJobStatus, startQueue, closeQueue } from './queue/queue.js';
+import { startQueue, closeQueue, queueStats } from './queue/queue.js';
+import { memoryStats } from './cache/memory.js';
 import { ollamaHealthy } from './ollama/client.js';
-import { requestTranslation, translatorHealthy } from './services/translator.js';
+import { translatorHealthy } from './services/translator.js';
 import { analyzePhotos } from './services/vision.js';
-import { metrics, snapshot, recordJobTiming } from './util/metrics.js';
+import { submitExtraction, readExtractionResult } from './application/extraction.js';
+import { metrics, snapshot } from './util/metrics.js';
 
 const app = express();
+app.disable('x-powered-by');
 app.use(express.json({ limit: '8mb' }));
 
 const asyncRoute = (handler) => (req, res, next) => {
@@ -42,18 +42,27 @@ app.get('/health', asyncRoute(async (_req, res) => {
     translator,
     vision: config.visionEnabled,
     visionProviders: config.visionProviders,
-    queue: 'memory',
-    cache: 'memory',
+    executor: queueStats(),
+    cache: memoryStats(),
     model: config.model,
     translationModel: 'facebook/m2m100_418M',
   });
 }));
 
 app.get('/ready', (_req, res) => {
-  res.json({ ok: true, queue: 'memory', cache: 'memory' });
+  const executor = queueStats();
+  const ready = !config.enabled || !config.textEnabled || (executor.started && !executor.stopping);
+  res.status(ready ? 200 : 503).json({
+    ok: ready,
+    accepting: executor.accepting,
+    executor,
+    cache: memoryStats(),
+  });
 });
 
-app.get('/metrics', (_req, res) => res.json(snapshot()));
+app.get('/metrics', (_req, res) => {
+  res.json(snapshot({ cache: memoryStats(), queue: queueStats() }));
+});
 
 app.post('/ai/vision', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.visionEnabled) return res.json({ status: 'disabled' });
@@ -91,79 +100,33 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
     return res.status(400).json({ error: 'meta must be an object' });
   }
 
-  const facts = knownFacts || {};
-  const key = extractionKey(kind, rawText, facts);
-  const cached = await getResult(key);
-  if (cached) {
-    metrics.cacheHits += 1;
-    return res.json({ key, cached: true, ...cached });
-  }
-
-  const normalizedText = normalizeText(rawText);
-  if (kind === 'translation') {
-    const targetLanguage = facts.targetLanguage;
-    try {
-      const translated = await requestTranslation(normalizedText, targetLanguage);
-      const totalMs = translated.timings?.roundTripMs || translated.timings?.totalMs || 0;
-      recordJobTiming('translation', { ollamaMs: 0, totalMs });
-      metrics.succeeded += 1;
-      const now = new Date().toISOString();
-      const stored = await setResult(key, {
-        status: 'completed',
-        kind,
-        data: translated.data,
-        confidence: translated.data.confidence,
-        lowConfidence: false,
-        engine: translated.engine,
-        model: 'facebook/m2m100_418M',
-        timings: {
-          ...translated.timings,
-          queueWaitMs: 0,
-          queuedAt: now,
-          startedAt: now,
-          finishedAt: new Date().toISOString(),
-          totalWithQueueMs: totalMs,
-        },
-      });
-      return res.json({ key, cached: false, ...stored });
-    } catch (error) {
-      log.warn('dedicated translation unavailable', { code: error?.code, msg: error?.message });
-      if (!config.translationFallbackToQwen) {
-        return res.status(503).json({ status: 'failed', key, error: 'translation service unavailable' });
-      }
-      await enqueue(kind, key, { text: normalizedText, knownFacts: facts, meta: meta || {} });
-      return res.json({ status: 'pending', key, fallback: 'qwen' });
-    }
-  }
-
-  const promptText = redactContacts(normalizedText);
-  await enqueue(kind, key, { text: promptText, knownFacts: facts, meta: meta || {} });
-  res.json({ status: 'pending', key });
+  const result = await submitExtraction({
+    kind,
+    rawText,
+    knownFacts: knownFacts || {},
+    meta: meta || {},
+  });
+  const { httpStatus = 200, ...body } = result;
+  return res.status(httpStatus).json(body);
 }));
 
 app.get('/ai/result/:key', asyncRoute(async (req, res) => {
   if (!/^(apartment|vacancy|candidate|translation)-[a-f0-9]{32}$/.test(req.params.key)) {
     return res.status(400).json({ error: 'invalid key' });
   }
-  const cached = await getResult(req.params.key);
-  if (cached) return res.json({ key: req.params.key, ...cached });
-
-  const job = getJobStatus(req.params.key);
-  if (!job) return res.json({ key: req.params.key, status: 'not_found' });
-  if (job.state === 'completed' && job.result) return res.json({ key: req.params.key, ...job.result });
-  if (job.state === 'failed') return res.json({ key: req.params.key, status: 'failed', error: job.error || 'AI job failed' });
-  return res.json({ key: req.params.key, status: 'pending' });
+  res.json(await readExtractionResult(req.params.key));
 }));
 
 app.use((err, _req, res, _next) => {
-  log.error('http error', { error: err.message });
-  res.status(500).json({ error: 'internal' });
+  log.error('http error', { code: err.code, error: err.message });
+  const status = Number(err.status) >= 400 && Number(err.status) <= 599 ? Number(err.status) : 500;
+  res.status(status).json({ error: status === 500 ? 'internal' : err.code || 'unavailable' });
 });
 
 const server = app.listen(config.port, () => {
   log.info('ai-worker listening', { port: config.port, enabled: config.enabled });
   if (config.enabled && config.textEnabled) startQueue();
-  else log.warn('AI disabled — queue not started (deterministic parsers only)');
+  else log.warn('AI disabled — executor not started (deterministic parsers only)');
 });
 
 let stopping = false;
