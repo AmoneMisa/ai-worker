@@ -32,8 +32,7 @@ services:
     networks: [ internal ]
 
   translator:
-    build:
-      context: ./translator
+    image: ${TRANSLATOR_IMAGE:-ghcr.io/amonemisa/ai-worker-translator:latest}
     restart: unless-stopped
     init: true
     environment:
@@ -50,24 +49,8 @@ services:
       retries: 10
       start_period: 20s
 
-  ai-redis:
-    image: redis:8-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
-    volumes:
-      - ai-redis-data:/data
-    networks: [ internal ]
-    mem_limit: "${AI_REDIS_MEMORY_LIMIT:-384m}"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-
   ai-worker:
-    build:
-      context: .
+    image: ${AI_WORKER_IMAGE:-ghcr.io/amonemisa/ai-worker:latest}
     restart: unless-stopped
     init: true
     environment:
@@ -75,7 +58,6 @@ services:
       - TRANSLATION_URL=http://translator:4040
       - TRANSLATION_SERVICE_TIMEOUT_MS=${TRANSLATION_SERVICE_TIMEOUT_MS:-30000}
       - TRANSLATION_FALLBACK_TO_QWEN=${TRANSLATION_FALLBACK_TO_QWEN:-true}
-      - REDIS_URL=redis://ai-redis:6379
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
       - AI_VISION_ENABLED=${AI_VISION_ENABLED:-false}
@@ -115,8 +97,6 @@ services:
         condition: service_healthy
       translator:
         condition: service_healthy
-      ai-redis:
-        condition: service_healthy
     networks: [ internal, ai-net ]
     ports:
       - "127.0.0.1:4030:4030"
@@ -132,7 +112,6 @@ services:
 
 volumes:
   ollama-data:
-  ai-redis-data:
 
 networks:
   internal:
