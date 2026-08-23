@@ -7,6 +7,8 @@ import { memoryStats } from './cache/memory.js';
 import { ollamaHealthy } from './ollama/client.js';
 import { translatorHealthy } from './services/translator.js';
 import { analyzePhotos } from './services/vision.js';
+import { PUBLIC_EXTRACTION_KINDS } from './services/extract.js';
+import { executeJob } from './application/job-handler.js';
 import { submitExtraction, readExtractionResult } from './application/extraction.js';
 import { metrics, snapshot } from './util/metrics.js';
 
@@ -35,8 +37,10 @@ app.get('/health', asyncRoute(async (_req, res) => {
     config.enabled ? ollamaHealthy() : false,
     translatorHealthy(),
   ]);
+  const textHealthy = !config.enabled || !config.textEnabled || ai;
+  const translationHealthy = translator || (config.translationFallbackToQwen && ai);
   res.json({
-    ok: true,
+    ok: textHealthy && translationHealthy,
     enabled: config.enabled,
     ai,
     translator,
@@ -73,7 +77,7 @@ app.post('/ai/vision', asyncRoute(async (req, res) => {
   }
   try {
     const result = await analyzePhotos(images);
-    metrics.imageCount += 1;
+    metrics.imageCount += images.length;
     metrics.succeeded += 1;
     return res.json({ status: 'completed', ...result });
   } catch (error) {
@@ -86,8 +90,8 @@ app.post('/ai/vision', asyncRoute(async (req, res) => {
 app.post('/ai/extract', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.textEnabled) return res.json({ status: 'disabled' });
   const { kind, rawText, knownFacts, meta } = req.body || {};
-  if (!['apartment', 'vacancy', 'candidate', 'translation'].includes(kind)) {
-    return res.status(400).json({ error: 'kind must be apartment|vacancy|candidate|translation' });
+  if (!PUBLIC_EXTRACTION_KINDS.includes(kind)) {
+    return res.status(400).json({ error: `kind must be ${PUBLIC_EXTRACTION_KINDS.join('|')}` });
   }
   if (!rawText || typeof rawText !== 'string') return res.status(400).json({ error: 'missing rawText' });
   if (rawText.length > config.maxTextChars) {
@@ -111,7 +115,7 @@ app.post('/ai/extract', asyncRoute(async (req, res) => {
 }));
 
 app.get('/ai/result/:key', asyncRoute(async (req, res) => {
-  if (!/^(apartment|vacancy|candidate|translation)-[a-f0-9]{32}$/.test(req.params.key)) {
+  if (!/^(apartment|vacancy|candidate|translation|photo)-[a-f0-9]{32}$/.test(req.params.key)) {
     return res.status(400).json({ error: 'invalid key' });
   }
   res.json(await readExtractionResult(req.params.key));
@@ -125,7 +129,7 @@ app.use((err, _req, res, _next) => {
 
 const server = app.listen(config.port, () => {
   log.info('ai-worker listening', { port: config.port, enabled: config.enabled });
-  if (config.enabled && config.textEnabled) startQueue();
+  if (config.enabled && config.textEnabled) startQueue(executeJob);
   else log.warn('AI disabled — executor not started (deterministic parsers only)');
 });
 
