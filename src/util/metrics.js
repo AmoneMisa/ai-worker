@@ -1,6 +1,7 @@
-// In-memory counters (spec §30). Exposed at /metrics; reset on restart.
+// Lightweight process-local counters. Exposed at /metrics and reset on restart.
 export const metrics = {
   queued: 0,
+  rejected: 0,
   processing: 0,
   succeeded: 0,
   failed: 0,
@@ -45,19 +46,22 @@ export function recordText(ms) {
   metrics.textMsTotal += ms || 0;
   metrics.textCount += 1;
 }
+
 export function recordQueueWait(ms, kind = 'unknown') {
   const value = Math.max(0, ms || 0);
   metrics.queueWaitMsTotal += value;
   metrics.queueWaitCount += 1;
   kindMetrics(kind).queueWaitMsTotal += value;
 }
+
 export function recordJobTiming(kind, { ollamaMs = 0, totalMs = 0 } = {}) {
   const item = kindMetrics(kind);
   item.count += 1;
   item.ollamaMsTotal += Math.max(0, ollamaMs || 0);
   item.totalMsTotal += Math.max(0, totalMs || 0);
 }
-export function snapshot() {
+
+export function snapshot({ cache, queue } = {}) {
   const byKind = Object.fromEntries(Object.entries(metrics.byKind).map(([kind, item]) => [kind, {
     ...item,
     avgQueueWaitMs: item.count ? Math.round(item.queueWaitMsTotal / item.count) : 0,
@@ -68,6 +72,8 @@ export function snapshot() {
     ...item,
     avgLatencyMs: item.attempts ? Math.round(item.latencyMsTotal / item.attempts) : 0,
   }]));
+  const memory = process.memoryUsage();
+
   return {
     ...metrics,
     byKind,
@@ -75,5 +81,14 @@ export function snapshot() {
     avgTextMs: metrics.textCount ? Math.round(metrics.textMsTotal / metrics.textCount) : 0,
     avgImageMs: metrics.imageCount ? Math.round(metrics.imageMsTotal / metrics.imageCount) : 0,
     avgQueueWaitMs: metrics.queueWaitCount ? Math.round(metrics.queueWaitMsTotal / metrics.queueWaitCount) : 0,
+    runtime: {
+      uptimeSeconds: Math.round(process.uptime()),
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      heapTotalBytes: memory.heapTotal,
+      externalBytes: memory.external,
+      cache: cache || null,
+      queue: queue || null,
+    },
   };
 }

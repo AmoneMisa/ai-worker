@@ -31,14 +31,15 @@ export const config = {
   cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_AUTH_TOKEN || '',
   cloudflareVisionModel: process.env.CLOUDFLARE_VISION_MODEL || '@cf/meta/llama-3.2-11b-vision-instruct',
 
-  concurrency: num(process.env.AI_CONCURRENCY, 1),
+  concurrency: Math.max(1, num(process.env.AI_CONCURRENCY, 1)),
+  queueMaxPending: Math.max(1, num(process.env.AI_QUEUE_MAX_PENDING, 100)),
   textContext: num(process.env.AI_TEXT_CONTEXT, 8192),
   imageContext: num(process.env.AI_IMAGE_CONTEXT, 4096),
   textTimeoutMs: num(process.env.AI_TEXT_TIMEOUT_MS, 120_000),
   translationTimeoutMs: num(process.env.AI_TRANSLATION_TIMEOUT_MS, 180_000),
   imageTimeoutMs: num(process.env.AI_IMAGE_TIMEOUT_MS, 300_000),
 
-  maxRetries: num(process.env.AI_MAX_RETRIES, 1),
+  maxRetries: Math.max(0, num(process.env.AI_MAX_RETRIES, 1)),
   maxPhotosPerListing: num(process.env.AI_MAX_PHOTOS_PER_LISTING, 4),
   imageMaxWidth: num(process.env.AI_IMAGE_MAX_WIDTH, 1280),
   imageMaxHeight: num(process.env.AI_IMAGE_MAX_HEIGHT, 1280),
@@ -50,4 +51,5 @@ export const config = {
   schemaVersion: num(process.env.SCHEMA_VERSION, 3),
   cacheTtlMs: num(process.env.AI_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
   translationCacheTtlMs: num(process.env.AI_TRANSLATION_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000),
+  cacheMaxEntries: Math.max(10, num(process.env.AI_CACHE_MAX_ENTRIES, 2_000)),
 };

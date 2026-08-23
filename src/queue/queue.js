@@ -40,7 +40,7 @@ async function run(job) {
 
   try {
     let lastError;
-    const attempts = Math.max(1, config.maxRetries + 1);
+    const attempts = config.maxRetries + 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         if (job.kind === 'photo') {
@@ -83,19 +83,20 @@ async function run(job) {
     job.state = 'failed';
     job.error = lastError?.message || 'AI job failed';
     log.error('ai job failed', { id: job.key, code: lastError?.code, msg: lastError?.message });
-    try {
-      await setResult(job.key, {
-        status: 'failed',
-        kind: job.kind,
-        errorCode: lastError?.code || 'ERROR',
-        error: job.error,
-      });
-    } catch (error) {
-      log.error('failed to persist failure', { error: error.message });
-    }
+    await setResult(job.key, {
+      status: 'failed',
+      kind: job.kind,
+      errorCode: lastError?.code || 'ERROR',
+      error: job.error,
+    });
+  } catch (error) {
+    log.error('failed to persist job result', { id: job.key, error: error.message });
   } finally {
     metrics.processing -= 1;
     active = Math.max(0, active - 1);
+    // Completed/failed payloads live in ResultCache. Keeping terminal jobs here
+    // would duplicate large prompt/result objects and slowly grow the Node heap.
+    jobs.delete(job.key);
     pump();
     resolveIdle();
   }
@@ -103,7 +104,7 @@ async function run(job) {
 
 function pump() {
   if (!started || stopping) return;
-  while (active < Math.max(1, config.concurrency) && waiting.length) {
+  while (active < config.concurrency && waiting.length) {
     const job = waiting.shift();
     if (!job || job.state !== 'waiting') continue;
     void run(job);
@@ -114,7 +115,11 @@ export function startQueue() {
   started = true;
   stopping = false;
   pump();
-  log.info('ai worker started', { concurrency: config.concurrency, model: config.model, queue: 'memory' });
+  log.info('ai executor started', {
+    concurrency: config.concurrency,
+    maxPending: config.queueMaxPending,
+    model: config.model,
+  });
 }
 
 export async function enqueue(kind, key, input) {
@@ -122,7 +127,14 @@ export async function enqueue(kind, key, input) {
   if (existing && ['waiting', 'active'].includes(existing.state)) {
     return { job: existing, created: false };
   }
-  if (existing) jobs.delete(key);
+
+  if (!started || stopping) {
+    throw Object.assign(new Error('AI executor is not accepting jobs'), { code: 'EXECUTOR_UNAVAILABLE', status: 503 });
+  }
+  if (waiting.length + active >= config.queueMaxPending) {
+    metrics.rejected = (metrics.rejected || 0) + 1;
+    throw Object.assign(new Error('AI executor queue is full'), { code: 'QUEUE_FULL', status: 503 });
+  }
 
   const job = {
     kind,
@@ -150,17 +162,26 @@ export function getJobStatus(key) {
     result: job.result,
     error: job.error,
     kind: job.kind,
-    input: job.input,
+  };
+}
+
+export function queueStats() {
+  return {
+    started,
+    stopping,
+    active,
+    pending: waiting.length,
+    tracked: jobs.size,
+    concurrency: config.concurrency,
+    maxPending: config.queueMaxPending,
+    accepting: started && !stopping && waiting.length + active < config.queueMaxPending,
   };
 }
 
 export async function closeQueue() {
   stopping = true;
   for (const job of waiting.splice(0)) {
-    if (job.state === 'waiting') {
-      job.state = 'failed';
-      job.error = 'worker shutting down';
-    }
+    jobs.delete(job.key);
   }
   if (!active) return;
   await new Promise((resolve) => idleWaiters.push(resolve));
