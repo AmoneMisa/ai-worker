@@ -1,14 +1,13 @@
-// Result cache. A completed (or failed) extraction is stored under its content
-// hash so an identical input never re-runs inference (spec §28). The record also
-// carries model/prompt/schema versions for provenance (spec §29).
-import { cacheRedis } from '../redis.js';
+// Process-local result cache. The durable job queue lives in Personal Site/Postgres;
+// ai-worker only needs short-lived dedupe/result storage while a worker instance is
+// alive. A restart may drop cached results, and callers will safely resubmit them.
 import { config } from '../config.js';
+import { memoryGet, memorySet } from './memory.js';
 
 const PREFIX = 'ai:result:';
 
 export async function getResult(key) {
-  const raw = await cacheRedis.get(PREFIX + key);
-  return raw ? JSON.parse(raw) : null;
+  return memoryGet(PREFIX + key);
 }
 
 export async function setResult(key, record) {
@@ -22,6 +21,6 @@ export async function setResult(key, record) {
   const ttlMs = record.kind === 'translation'
     ? config.translationCacheTtlMs
     : config.cacheTtlMs;
-  await cacheRedis.set(PREFIX + key, JSON.stringify(value), 'PX', ttlMs);
+  memorySet(PREFIX + key, value, ttlMs);
   return value;
 }
