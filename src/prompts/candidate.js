@@ -10,6 +10,8 @@ role is different.
 Important rules:
 - Extract only facts stated or strongly and unambiguously implied by the source.
   Never invent a name, location, salary, age, experience, contact or profession.
+- Do not ignore facts just because they appear only in free-form resume text.
+  Read both labelled fields and ordinary prose before returning the result.
 - knownFacts contain ONLY hard facts the caller could prove deterministically
   (for example an explicitly labelled name/age or an unredacted contact). They
   are authoritative. Other parsed values are intentionally not supplied here
@@ -41,6 +43,16 @@ Important rules:
   React.Js -> React, Fastapi -> FastAPI, Postgresql -> PostgreSQL.
 - features contains useful candidate circumstances explicitly stated, such as
   Student, Parental leave, No experience, Night shift, Open to relocation.
+- languages MUST contain every explicitly mentioned human language, including
+  languages mentioned only inside prose. Preserve an explicitly stated level in
+  the same string using a concise normalized form, e.g. "Russian — professional",
+  "Tajik — basic", "English — B2", "Uzbek — native". Normalize common level
+  wording: родной/native -> native; свободный/fluent -> fluent;
+  профессиональный/professional -> professional; разговорный/conversational ->
+  conversational; средний/intermediate -> intermediate; базовый/basic -> basic;
+  preserve CEFR A1-C2 verbatim. Do not invent a level when none is stated.
+  Example: "Знание профессионального русского языка и базового таджикского"
+  => ["Russian — professional", "Tajik — basic"].
 - age is numeric only when stated. isAdult follows age when age is known; otherwise
   null. The calling application applies its own default when age is unavailable.
 - salaryMin/salaryMax/currency are CURRENT expectations requested by the
