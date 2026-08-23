@@ -156,6 +156,12 @@ export function getJobStatus(key) {
 
 export async function closeQueue() {
   stopping = true;
+  for (const job of waiting.splice(0)) {
+    if (job.state === 'waiting') {
+      job.state = 'failed';
+      job.error = 'worker shutting down';
+    }
+  }
   if (!active) return;
   await new Promise((resolve) => idleWaiters.push(resolve));
 }
