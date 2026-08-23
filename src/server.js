@@ -5,13 +5,11 @@ import { log } from './util/logger.js';
 import { extractionKey, normalizeText } from './util/hash.js';
 import { redactContacts } from './util/privacy.js';
 import { getResult, setResult } from './cache/cache.js';
-import { enqueue, aiQueue } from './queue/queue.js';
-import { startWorker } from './queue/worker.js';
+import { enqueue, getJobStatus, startQueue, closeQueue } from './queue/queue.js';
 import { ollamaHealthy } from './ollama/client.js';
 import { requestTranslation, translatorHealthy } from './services/translator.js';
 import { analyzePhotos } from './services/vision.js';
 import { metrics, snapshot, recordJobTiming } from './util/metrics.js';
-import { cacheRedis } from './redis.js';
 
 const app = express();
 app.use(express.json({ limit: '8mb' }));
@@ -44,22 +42,19 @@ app.get('/health', asyncRoute(async (_req, res) => {
     translator,
     vision: config.visionEnabled,
     visionProviders: config.visionProviders,
-    redis: cacheRedis.status === 'ready',
+    queue: 'memory',
+    cache: 'memory',
     model: config.model,
     translationModel: 'facebook/m2m100_418M',
   });
 }));
 
 app.get('/ready', (_req, res) => {
-  const ready = !config.enabled || cacheRedis.status === 'ready';
-  res.status(ready ? 200 : 503).json({ ok: ready, redis: cacheRedis.status });
+  res.json({ ok: true, queue: 'memory', cache: 'memory' });
 });
 
 app.get('/metrics', (_req, res) => res.json(snapshot()));
 
-// Remote photo enrichment. Images may be public URLs or data:image/... URLs.
-// The provider chain is synchronous and intentionally outside BullMQ/Ollama, so
-// photo analysis cannot block Qwen text parsing. Results are cached by photo set.
 app.post('/ai/vision', asyncRoute(async (req, res) => {
   if (!config.enabled || !config.visionEnabled) return res.json({ status: 'disabled' });
   const { images } = req.body || {};
@@ -152,24 +147,12 @@ app.get('/ai/result/:key', asyncRoute(async (req, res) => {
   }
   const cached = await getResult(req.params.key);
   if (cached) return res.json({ key: req.params.key, ...cached });
-  const job = await aiQueue.getJob(req.params.key);
-  if (job) {
-    const state = await job.getState();
-    if (state === 'completed') {
-      const retained = job.returnvalue;
-      if (retained?.status === 'completed' && retained?.data) return res.json({ key: req.params.key, ...retained });
-      const { kind, key, input } = job.data || {};
-      if (kind && key && input) {
-        await job.remove();
-        await enqueue(kind, key, input);
-        return res.json({ key: req.params.key, status: 'pending' });
-      }
-      return res.json({ key: req.params.key, status: 'failed', error: 'completed result is unavailable' });
-    }
-    if (state === 'failed') return res.json({ key: req.params.key, status: 'failed', error: job.failedReason || 'AI job failed' });
-    return res.json({ key: req.params.key, status: 'pending' });
-  }
-  res.json({ key: req.params.key, status: 'not_found' });
+
+  const job = getJobStatus(req.params.key);
+  if (!job) return res.json({ key: req.params.key, status: 'not_found' });
+  if (job.state === 'completed' && job.result) return res.json({ key: req.params.key, ...job.result });
+  if (job.state === 'failed') return res.json({ key: req.params.key, status: 'failed', error: job.error || 'AI job failed' });
+  return res.json({ key: req.params.key, status: 'pending' });
 }));
 
 app.use((err, _req, res, _next) => {
@@ -177,11 +160,10 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'internal' });
 });
 
-let worker;
 const server = app.listen(config.port, () => {
   log.info('ai-worker listening', { port: config.port, enabled: config.enabled });
-  if (config.enabled && config.textEnabled) worker = startWorker();
-  else log.warn('AI disabled — worker not started (deterministic parsers only)');
+  if (config.enabled && config.textEnabled) startQueue();
+  else log.warn('AI disabled — queue not started (deterministic parsers only)');
 });
 
 let stopping = false;
@@ -190,7 +172,7 @@ async function shutdown(signal) {
   stopping = true;
   log.info('shutting down', { signal });
   server.close();
-  await Promise.allSettled([worker?.close(), aiQueue.close(), cacheRedis.quit()]);
+  await closeQueue();
   process.exit(0);
 }
 
