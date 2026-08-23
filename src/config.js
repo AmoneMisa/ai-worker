@@ -1,55 +1,79 @@
-// Central config, all env-driven. Sensible defaults let the service boot with
-// nothing set; production overrides come from ai-worker.env.
-const num = (v, d) => (v == null || v === '' ? d : Number(v));
-const bool = (v, d) => (v == null || v === '' ? d : v === 'true' || v === '1');
-const list = (v, d) => String(v || d).split(',').map((x) => x.trim()).filter(Boolean);
+// Central env-driven configuration. Invalid production values fail fast at boot
+// instead of surfacing later as NaN timeouts, broken concurrency limits or
+// silently unsafe thresholds.
+function env(name, fallback = '') {
+  const value = process.env[name];
+  return value == null || value === '' ? fallback : value;
+}
 
-export const config = {
-  port: num(process.env.PORT, 4030),
+function bool(name, fallback) {
+  const raw = env(name, null);
+  if (raw == null) return fallback;
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`Invalid ${name}: expected true|false|1|0`);
+}
 
-  enabled: bool(process.env.AI_ENABLED, true),
-  textEnabled: bool(process.env.AI_TEXT_ENABLED, true),
-  visionEnabled: bool(process.env.AI_VISION_ENABLED, false),
+function number(name, fallback, { min = -Infinity, max = Infinity, integer = false } = {}) {
+  const raw = env(name, null);
+  const value = raw == null ? fallback : Number(raw);
+  if (!Number.isFinite(value) || (integer && !Number.isInteger(value)) || value < min || value > max) {
+    const range = `${Number.isFinite(min) ? min : '-∞'}..${Number.isFinite(max) ? max : '∞'}`;
+    throw new Error(`Invalid ${name}: expected ${integer ? 'integer ' : ''}number in ${range}`);
+  }
+  return value;
+}
 
-  ollamaUrl: process.env.OLLAMA_URL || 'http://ollama:11434',
-  model: process.env.AI_MODEL || 'qwen3.5:2b',
-  think: bool(process.env.AI_THINK, false),
-  visionModel: process.env.AI_VISION_MODEL || 'qwen3.5:2b',
+function list(name, fallback) {
+  return String(env(name, fallback)).split(',').map((item) => item.trim()).filter(Boolean);
+}
 
-  translationUrl: (process.env.TRANSLATION_URL || 'http://translator:4040').replace(/\/$/, ''),
-  translationServiceTimeoutMs: num(process.env.TRANSLATION_SERVICE_TIMEOUT_MS, 30_000),
-  translationFallbackToQwen: bool(process.env.TRANSLATION_FALLBACK_TO_QWEN, true),
+export const config = Object.freeze({
+  port: number('PORT', 4030, { min: 1, max: 65535, integer: true }),
 
-  visionProviders: list(process.env.VISION_PROVIDERS, 'groq,cloudflare'),
-  visionConcurrency: Math.max(1, num(process.env.VISION_CONCURRENCY, 1)),
-  visionProviderTimeoutMs: num(process.env.VISION_PROVIDER_TIMEOUT_MS, 30_000),
-  visionCooldownMs: num(process.env.VISION_COOLDOWN_MS, 5 * 60_000),
-  visionCacheTtlMs: num(process.env.VISION_CACHE_TTL_MS, 30 * 24 * 60 * 60_000),
-  groqApiKey: process.env.GROQ_API_KEY || '',
-  groqVisionModel: process.env.GROQ_VISION_MODEL || 'qwen/qwen3.6-27b',
-  cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
-  cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_AUTH_TOKEN || '',
-  cloudflareVisionModel: process.env.CLOUDFLARE_VISION_MODEL || '@cf/meta/llama-3.2-11b-vision-instruct',
+  enabled: bool('AI_ENABLED', true),
+  textEnabled: bool('AI_TEXT_ENABLED', true),
+  visionEnabled: bool('AI_VISION_ENABLED', false),
 
-  concurrency: Math.max(1, num(process.env.AI_CONCURRENCY, 1)),
-  queueMaxPending: Math.max(1, num(process.env.AI_QUEUE_MAX_PENDING, 100)),
-  textContext: num(process.env.AI_TEXT_CONTEXT, 8192),
-  imageContext: num(process.env.AI_IMAGE_CONTEXT, 4096),
-  textTimeoutMs: num(process.env.AI_TEXT_TIMEOUT_MS, 120_000),
-  translationTimeoutMs: num(process.env.AI_TRANSLATION_TIMEOUT_MS, 180_000),
-  imageTimeoutMs: num(process.env.AI_IMAGE_TIMEOUT_MS, 300_000),
+  ollamaUrl: env('OLLAMA_URL', 'http://ollama:11434').replace(/\/$/, ''),
+  model: env('AI_MODEL', 'qwen3.5:2b'),
+  think: bool('AI_THINK', false),
+  visionModel: env('AI_VISION_MODEL', 'qwen3.5:2b'),
 
-  maxRetries: Math.max(0, num(process.env.AI_MAX_RETRIES, 1)),
-  maxPhotosPerListing: num(process.env.AI_MAX_PHOTOS_PER_LISTING, 4),
-  imageMaxWidth: num(process.env.AI_IMAGE_MAX_WIDTH, 1280),
-  imageMaxHeight: num(process.env.AI_IMAGE_MAX_HEIGHT, 1280),
-  minConfidence: num(process.env.AI_MIN_CONFIDENCE, 0.6),
-  maxTextChars: num(process.env.AI_MAX_TEXT_CHARS, 32_000),
-  apiKey: process.env.AI_API_KEY || '',
+  translationUrl: env('TRANSLATION_URL', 'http://translator:4040').replace(/\/$/, ''),
+  translationServiceTimeoutMs: number('TRANSLATION_SERVICE_TIMEOUT_MS', 30_000, { min: 1, integer: true }),
+  translationFallbackToQwen: bool('TRANSLATION_FALLBACK_TO_QWEN', true),
 
-  promptVersion: num(process.env.PROMPT_VERSION, 1),
-  schemaVersion: num(process.env.SCHEMA_VERSION, 3),
-  cacheTtlMs: num(process.env.AI_CACHE_TTL_MS, 24 * 60 * 60 * 1000),
-  translationCacheTtlMs: num(process.env.AI_TRANSLATION_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000),
-  cacheMaxEntries: Math.max(10, num(process.env.AI_CACHE_MAX_ENTRIES, 2_000)),
-};
+  visionProviders: list('VISION_PROVIDERS', 'groq,cloudflare'),
+  visionConcurrency: number('VISION_CONCURRENCY', 1, { min: 1, integer: true }),
+  visionProviderTimeoutMs: number('VISION_PROVIDER_TIMEOUT_MS', 30_000, { min: 1, integer: true }),
+  visionCooldownMs: number('VISION_COOLDOWN_MS', 5 * 60_000, { min: 0, integer: true }),
+  visionCacheTtlMs: number('VISION_CACHE_TTL_MS', 30 * 24 * 60 * 60_000, { min: 1, integer: true }),
+  groqApiKey: env('GROQ_API_KEY'),
+  groqVisionModel: env('GROQ_VISION_MODEL', 'qwen/qwen3.6-27b'),
+  cloudflareAccountId: env('CLOUDFLARE_ACCOUNT_ID'),
+  cloudflareApiToken: env('CLOUDFLARE_API_TOKEN', env('CLOUDFLARE_AUTH_TOKEN')),
+  cloudflareVisionModel: env('CLOUDFLARE_VISION_MODEL', '@cf/meta/llama-3.2-11b-vision-instruct'),
+
+  concurrency: number('AI_CONCURRENCY', 1, { min: 1, integer: true }),
+  queueMaxPending: number('AI_QUEUE_MAX_PENDING', 100, { min: 1, integer: true }),
+  textContext: number('AI_TEXT_CONTEXT', 8192, { min: 256, integer: true }),
+  imageContext: number('AI_IMAGE_CONTEXT', 4096, { min: 256, integer: true }),
+  textTimeoutMs: number('AI_TEXT_TIMEOUT_MS', 120_000, { min: 1, integer: true }),
+  translationTimeoutMs: number('AI_TRANSLATION_TIMEOUT_MS', 180_000, { min: 1, integer: true }),
+  imageTimeoutMs: number('AI_IMAGE_TIMEOUT_MS', 300_000, { min: 1, integer: true }),
+
+  maxRetries: number('AI_MAX_RETRIES', 1, { min: 0, integer: true }),
+  maxPhotosPerListing: number('AI_MAX_PHOTOS_PER_LISTING', 4, { min: 1, max: 20, integer: true }),
+  imageMaxWidth: number('AI_IMAGE_MAX_WIDTH', 1280, { min: 64, integer: true }),
+  imageMaxHeight: number('AI_IMAGE_MAX_HEIGHT', 1280, { min: 64, integer: true }),
+  minConfidence: number('AI_MIN_CONFIDENCE', 0.6, { min: 0, max: 1 }),
+  maxTextChars: number('AI_MAX_TEXT_CHARS', 32_000, { min: 1, integer: true }),
+  apiKey: env('AI_API_KEY'),
+
+  promptVersion: number('PROMPT_VERSION', 1, { min: 1, integer: true }),
+  schemaVersion: number('SCHEMA_VERSION', 3, { min: 1, integer: true }),
+  cacheTtlMs: number('AI_CACHE_TTL_MS', 24 * 60 * 60 * 1000, { min: 1, integer: true }),
+  translationCacheTtlMs: number('AI_TRANSLATION_CACHE_TTL_MS', 7 * 24 * 60 * 60 * 1000, { min: 1, integer: true }),
+  cacheMaxEntries: number('AI_CACHE_MAX_ENTRIES', 2_000, { min: 10, integer: true }),
+});
