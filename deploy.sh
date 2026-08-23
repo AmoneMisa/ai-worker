@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Standalone production deploy. GitHub Actions invokes this over SSH; it is also
-# safe to run manually from ~/opt/ai-worker.
+# Production deploy. Images are built in GitHub Actions; the server only updates
+# compose metadata, pulls images and restarts containers.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -28,18 +28,14 @@ if [ -n "$ollama_data_path" ]; then
 fi
 
 docker network inspect ai-net >/dev/null 2>&1 || docker network create ai-net
-
 compose=(docker compose --env-file ai-worker.env)
 
-"${compose[@]}" pull ollama ai-redis
-"${compose[@]}" up -d ollama ai-redis
+"${compose[@]}" pull ollama translator ai-worker
+"${compose[@]}" up -d ollama
 
-# Pull Qwen before starting the worker so parsing never triggers a model download.
+# Model download is runtime data, not an application image build.
 "${compose[@]}" --profile setup run --rm ollama-pull
 
-# The first translator build downloads and converts facebook/m2m100_418M to
-# CTranslate2 INT8. Docker caches that expensive model layer on subsequent deploys.
-"${compose[@]}" build translator ai-worker
 "${compose[@]}" up -d translator ai-worker
 "${compose[@]}" ps
 
@@ -50,8 +46,6 @@ for attempt in $(seq 1 40); do
   if curl --fail --silent --max-time 5 "$ready_url" >/dev/null 2>&1; then
     health="$(curl --fail --silent --show-error --max-time 10 "$health_url")"
     echo "$health"
-    # The worker can technically fall back to Qwen, but a deploy of this feature
-    # is not considered healthy until the dedicated translator is reachable.
     if echo "$health" | grep -q '"translator":true'; then
       exit 0
     fi
