@@ -71,6 +71,8 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
+            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
             cd ~/opt/ai-worker
             git pull --ff-only
             bash deploy.sh
+            docker logout ghcr.io
