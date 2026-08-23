@@ -10,6 +10,7 @@ import { analyzePhotos } from './services/vision.js';
 import { PUBLIC_EXTRACTION_KINDS } from './services/extract.js';
 import { executeJob } from './application/job-handler.js';
 import { submitExtraction, readExtractionResult } from './application/extraction.js';
+import { evaluateHealth } from './application/health.js';
 import { metrics, snapshot } from './util/metrics.js';
 
 const app = express();
@@ -33,14 +34,19 @@ app.use('/ai', (req, res, next) => {
 });
 
 app.get('/health', asyncRoute(async (_req, res) => {
-  const [ai, translator] = await Promise.all([
-    config.enabled ? ollamaHealthy() : false,
-    translatorHealthy(),
-  ]);
-  const textHealthy = !config.enabled || !config.textEnabled || ai;
-  const translationHealthy = translator || (config.translationFallbackToQwen && ai);
+  const textRequired = config.enabled && config.textEnabled;
+  const [ai, translator] = textRequired
+    ? await Promise.all([ollamaHealthy(), translatorHealthy()])
+    : [false, false];
+  const health = evaluateHealth({
+    enabled: config.enabled,
+    textEnabled: config.textEnabled,
+    translationFallbackToQwen: config.translationFallbackToQwen,
+    ai,
+    translator,
+  });
   res.json({
-    ok: textHealthy && translationHealthy,
+    ok: health.ok,
     enabled: config.enabled,
     ai,
     translator,

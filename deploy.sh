@@ -45,17 +45,17 @@ for attempt in $(seq 1 40); do
   if curl --fail --silent --max-time 5 "$ready_url" >/dev/null 2>&1; then
     health="$(curl --fail --silent --show-error --max-time 10 "$health_url")"
     echo "$health"
-    if echo "$health" | grep -q '"translator":true'; then
+    if echo "$health" | grep -q '"ok":true'; then
       exit 0
     fi
-    echo "ai-worker is ready but translator is not healthy yet (${attempt}/40)..."
+    echo "ai-worker is ready but health dependencies are not satisfied yet (${attempt}/40)..."
   else
     echo "Waiting for ai-worker readiness (${attempt}/40)..."
   fi
   sleep 3
 done
 
-echo "ai-worker/translator did not become ready; recent container logs:" >&2
+echo "ai-worker did not become healthy; recent container logs:" >&2
 "${compose[@]}" ps >&2
 "${compose[@]}" logs --tail 100 ai-worker translator >&2
 exit 1
