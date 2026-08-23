@@ -38,7 +38,6 @@ export const config = Object.freeze({
   ollamaUrl: env('OLLAMA_URL', 'http://ollama:11434').replace(/\/$/, ''),
   model: env('AI_MODEL', 'qwen3.5:2b'),
   think: bool('AI_THINK', false),
-  visionModel: env('AI_VISION_MODEL', 'qwen3.5:2b'),
 
   translationUrl: env('TRANSLATION_URL', 'http://translator:4040').replace(/\/$/, ''),
   translationServiceTimeoutMs: number('TRANSLATION_SERVICE_TIMEOUT_MS', 30_000, { min: 1, integer: true }),
@@ -58,15 +57,11 @@ export const config = Object.freeze({
   concurrency: number('AI_CONCURRENCY', 1, { min: 1, integer: true }),
   queueMaxPending: number('AI_QUEUE_MAX_PENDING', 100, { min: 1, integer: true }),
   textContext: number('AI_TEXT_CONTEXT', 8192, { min: 256, integer: true }),
-  imageContext: number('AI_IMAGE_CONTEXT', 4096, { min: 256, integer: true }),
   textTimeoutMs: number('AI_TEXT_TIMEOUT_MS', 120_000, { min: 1, integer: true }),
   translationTimeoutMs: number('AI_TRANSLATION_TIMEOUT_MS', 180_000, { min: 1, integer: true }),
-  imageTimeoutMs: number('AI_IMAGE_TIMEOUT_MS', 300_000, { min: 1, integer: true }),
 
   maxRetries: number('AI_MAX_RETRIES', 1, { min: 0, integer: true }),
   maxPhotosPerListing: number('AI_MAX_PHOTOS_PER_LISTING', 4, { min: 1, max: 20, integer: true }),
-  imageMaxWidth: number('AI_IMAGE_MAX_WIDTH', 1280, { min: 64, integer: true }),
-  imageMaxHeight: number('AI_IMAGE_MAX_HEIGHT', 1280, { min: 64, integer: true }),
   minConfidence: number('AI_MIN_CONFIDENCE', 0.6, { min: 0, max: 1 }),
   maxTextChars: number('AI_MAX_TEXT_CHARS', 32_000, { min: 1, integer: true }),
   apiKey: env('AI_API_KEY'),
