@@ -17,12 +17,12 @@ Important rules:
 - professions contains CURRENT desired professions/jobs only. A person may seek
   several different jobs, e.g. bartender + cashier + fitness trainer.
 - Determine the desired profession from intent/goal statements, not merely from
-  a field label. Uzbek `Kasbi` may describe a status/current occupation. For
-  example `Kasbi: Talaba` means Student and belongs in features, while
-  `maqsadim backend dasturchi sifatida ish topish` means the desired profession
+  a field label. Uzbek "Kasbi" may describe a status/current occupation. For
+  example "Kasbi: Talaba" means Student and belongs in features, while
+  "maqsadim backend dasturchi sifatida ish topish" means the desired profession
   is Backend Developer.
-- `Texnologiya` / technologies / stack describes skills, not a profession by
-  itself. `Pentesting` can support Penetration Tester when the candidate is
+- "Texnologiya" / technologies / stack describes skills, not a profession by
+  itself. "Pentesting" can support Penetration Tester when the candidate is
   explicitly seeking work in that field, but a technology list must not become
   a list of job titles.
 - previousProfessions contains roles the person explicitly says they worked in
@@ -44,13 +44,13 @@ Important rules:
 - age is numeric only when stated. isAdult follows age when age is known; otherwise
   null. The calling application applies its own default when age is unavailable.
 - salaryMin/salaryMax/currency are CURRENT expectations requested by the
-  candidate, not a previous salary. Respect open ranges: `300$+` means
-  salaryMin=300, salaryMax=null, currency=USD; `5 mln+` means min=5000000 and
+  candidate, not a previous salary. Respect open ranges: "300$+" means
+  salaryMin=300, salaryMax=null, currency=USD; "5 mln+" means min=5000000 and
   max=null. Do not convert currencies.
 - country/city/district must describe where the candidate is actually located or
   explicitly wants to work. Do not treat Telegram channel/source metadata as
   proof of residence. Use an ISO-3166 alpha-2 country code when known (UZ, UA,
-  KZ, KG, RO, CA, US, etc.). `Локація #Canada` therefore means country=CA, not
+  KZ, KG, RO, CA, US, etc.). "Локація #Canada" therefore means country=CA, not
   UA merely because it appeared in a Ukrainian channel.
 - remote is true/false ONLY if remote/office preference is explicit; otherwise
   null. Absence of the word remote NEVER means false.
@@ -58,7 +58,7 @@ Important rules:
 - employmentTypes may contain full_time and/or part_time when supported by text.
 - experienceYears means experience RELEVANT TO THE CURRENT desired profession(s).
   Unrelated previous experience must not be counted. Example: a candidate seeking
-  Backend Developer who says `1 yillik matematikadan repititorlik tajribam bor`
+  Backend Developer who says "1 yillik matematikadan repititorlik tajribam bor"
   has previousProfession Tutor, but backend experienceYears is null unless backend
   experience is separately stated.
 - contacts may contain telegram/email/phone only when present in the unredacted
