@@ -1,12 +1,12 @@
 # Plain ESM has no compile step. Dependencies are installed during the GitHub
 # Actions image build; production servers only pull the finished image.
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-FROM node:22-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
