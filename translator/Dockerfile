@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     HF_HOME=/tmp/hf \
@@ -21,7 +21,7 @@ from transformers import AutoTokenizer
 AutoTokenizer.from_pretrained('facebook/m2m100_418M').save_pretrained('/model/tokenizer')
 PY
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1 \
