@@ -35,9 +35,6 @@ compose=(docker compose --env-file ai-worker.env)
 
 # Model download is runtime data, not an application image build.
 "${compose[@]}" --profile setup run --rm ollama-pull
-
-# --remove-orphans drops the old ai-redis container after the compose definition
-# no longer contains that service.
 "${compose[@]}" up -d --remove-orphans translator ai-worker
 "${compose[@]}" ps
 
