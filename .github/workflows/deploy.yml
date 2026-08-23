@@ -71,4 +71,6 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
-            bash ~/opt/ai-worker/deploy.sh
+            cd ~/opt/ai-worker
+            git pull --ff-only
+            bash deploy.sh
