@@ -1,10 +1,17 @@
 import { config } from '../config.js';
-import { extract } from '../services/extract.js';
 import { setResult } from '../cache/cache.js';
 import { metrics, recordJobTiming, recordQueueWait, recordText } from '../util/metrics.js';
 import { log } from '../util/logger.js';
 
-export const PRIORITY = { translation: 1, vacancy: 2, apartment: 3, photo: 4 };
+export const PRIORITY = Object.freeze({ translation: 1, vacancy: 2, candidate: 2, apartment: 3, photo: 4 });
+
+const NON_RETRYABLE_CODES = new Set([
+  'BAD_KIND',
+  'INVALID_TRANSLATION',
+  'SCHEMA_VALIDATION_FAILED',
+  'VISION_NO_VALID_IMAGES',
+  'VISION_SCHEMA_INVALID',
+]);
 
 const jobs = new Map();
 const waiting = [];
@@ -12,10 +19,19 @@ let active = 0;
 let started = false;
 let stopping = false;
 let sequence = 0;
+let executeJob = null;
 const idleWaiters = [];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelay(attempt) {
+  return Math.min(8_000, 1_000 * (2 ** Math.max(0, attempt - 1))) + Math.floor(Math.random() * 250);
+}
+
+function shouldRetry(error) {
+  return !NON_RETRYABLE_CODES.has(error?.code);
 }
 
 function sortWaiting() {
@@ -43,15 +59,12 @@ async function run(job) {
     const attempts = config.maxRetries + 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
-        if (job.kind === 'photo') {
-          throw Object.assign(new Error('IMAGE_NOT_IMPLEMENTED'), { code: 'IMAGE_NOT_IMPLEMENTED' });
-        }
-        const result = await extract(job.kind, job.input);
+        const result = await executeJob(job.kind, job.input);
         const finishedAtMs = Date.now();
         const processMs = Math.max(0, finishedAtMs - startedAtMs);
         const totalMs = Math.max(0, finishedAtMs - job.timestamp);
         const ollamaDurationMs = result.timings?.ollamaDurationMs ?? result.timings?.totalMs ?? 0;
-        recordText(result.timings?.totalMs || 0);
+        if (job.kind !== 'photo') recordText(result.timings?.totalMs || 0);
         recordJobTiming(job.kind, { ollamaMs: ollamaDurationMs, totalMs });
         const timings = {
           ...(result.timings || {}),
@@ -70,12 +83,13 @@ async function run(job) {
       } catch (error) {
         lastError = error;
         if (error?.code === 'SCHEMA_VALIDATION_FAILED') metrics.schemaFailures += 1;
-        if (attempt < attempts) {
+        if (attempt < attempts && shouldRetry(error)) {
           metrics.retries += 1;
           log.warn('ai job retrying', { id: job.key, attempt, code: error?.code, msg: error?.message });
-          await sleep(3000);
+          await sleep(retryDelay(attempt));
           continue;
         }
+        break;
       }
     }
 
@@ -94,8 +108,6 @@ async function run(job) {
   } finally {
     metrics.processing -= 1;
     active = Math.max(0, active - 1);
-    // Completed/failed payloads live in ResultCache. Keeping terminal jobs here
-    // would duplicate large prompt/result objects and slowly grow the Node heap.
     jobs.delete(job.key);
     pump();
     resolveIdle();
@@ -103,7 +115,7 @@ async function run(job) {
 }
 
 function pump() {
-  if (!started || stopping) return;
+  if (!started || stopping || !executeJob) return;
   while (active < config.concurrency && waiting.length) {
     const job = waiting.shift();
     if (!job || job.state !== 'waiting') continue;
@@ -111,7 +123,9 @@ function pump() {
   }
 }
 
-export function startQueue() {
+export function startQueue(handler) {
+  if (typeof handler !== 'function') throw new TypeError('queue handler must be a function');
+  executeJob = handler;
   started = true;
   stopping = false;
   pump();
@@ -128,7 +142,7 @@ export async function enqueue(kind, key, input) {
     return { job: existing, created: false };
   }
 
-  if (!started || stopping) {
+  if (!started || stopping || !executeJob) {
     throw Object.assign(new Error('AI executor is not accepting jobs'), { code: 'EXECUTOR_UNAVAILABLE', status: 503 });
   }
   if (waiting.length + active >= config.queueMaxPending) {
@@ -174,15 +188,13 @@ export function queueStats() {
     tracked: jobs.size,
     concurrency: config.concurrency,
     maxPending: config.queueMaxPending,
-    accepting: started && !stopping && waiting.length + active < config.queueMaxPending,
+    accepting: started && !stopping && Boolean(executeJob) && waiting.length + active < config.queueMaxPending,
   };
 }
 
 export async function closeQueue() {
   stopping = true;
-  for (const job of waiting.splice(0)) {
-    jobs.delete(job.key);
-  }
-  if (!active) return;
-  await new Promise((resolve) => idleWaiters.push(resolve));
+  for (const job of waiting.splice(0)) jobs.delete(job.key);
+  if (active) await new Promise((resolve) => idleWaiters.push(resolve));
+  executeJob = null;
 }
