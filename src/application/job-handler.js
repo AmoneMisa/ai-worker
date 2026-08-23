@@ -8,8 +8,6 @@ export async function executeJob(kind, input) {
     const vision = await analyzePhotos(input?.images);
     return {
       data: vision.data,
-      confidence: 1,
-      lowConfidence: false,
       provider: vision.provider,
       cached: vision.cached,
       analyzedAt: vision.analyzedAt,
