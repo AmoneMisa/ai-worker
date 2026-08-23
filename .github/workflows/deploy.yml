@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ai-worker-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-deploy:
