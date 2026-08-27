@@ -3,6 +3,10 @@
 node_modules
 test
 scripts
+translator
 .env
 *.log
 README.md
+docker-compose.yml
+deploy.sh
+sample.env
