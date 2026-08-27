@@ -53,6 +53,14 @@ export const config = Object.freeze({
   cloudflareAccountId: env('CLOUDFLARE_ACCOUNT_ID'),
   cloudflareApiToken: env('CLOUDFLARE_API_TOKEN', env('CLOUDFLARE_AUTH_TOKEN')),
   cloudflareVisionModel: env('CLOUDFLARE_VISION_MODEL', '@cf/meta/llama-3.2-11b-vision-instruct'),
+  geminiApiKey: env('GEMINI_API_KEY'),
+  geminiVisionModel: env('GEMINI_VISION_MODEL', 'gemini-2.5-flash'),
+  nvidiaApiKey: env('NVIDIA_API_KEY'),
+  nvidiaVisionModel: env('NVIDIA_VISION_MODEL', 'meta/llama-3.2-11b-vision-instruct'),
+  githubModelsToken: env('GITHUB_MODELS_TOKEN'),
+  githubVisionModel: env('GITHUB_VISION_MODEL', 'openai/gpt-4o'),
+  huggingfaceApiKey: env('HUGGINGFACE_API_KEY'),
+  huggingfaceVisionModel: env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct'),
   // Defaults to the same model as text extraction so Ollama keeps a single model
   // loaded (OLLAMA_MAX_LOADED_MODELS=1) instead of swapping between two on every
   // request. Only set OLLAMA_VISION_MODEL separately if that model is multimodal.

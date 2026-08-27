@@ -103,7 +103,16 @@ Content-Type: application/json
 }
 ```
 
-Vision is enabled by default in the provided Compose configuration. Configure at least one provider in `.env` (`GROQ_API_KEY` or Cloudflare account/token). Provider failures fall through to the next configured provider; transient failures enter a short cooldown.
+Vision is enabled by default in the provided Compose configuration. The default chain is `groq,gemini,nvidia,githubmodels,huggingface,cloudflare` - configure at least one provider's key in `.env`; unconfigured providers fail instantly and fall through, so it's fine to leave the full chain even with some keys blank. Provider failures fall through to the next configured provider; transient (rate-limit/5xx) failures enter a short cooldown for that provider.
+
+| Provider | Env var | Free tier (approx) | Get a key |
+|---|---|---|---|
+| Groq | `GROQ_API_KEY` | model-dependent TPM limit | https://console.groq.com |
+| Gemini | `GEMINI_API_KEY` | ~15 RPM / 1,500 RPD | https://aistudio.google.com/apikey |
+| NVIDIA NIM | `NVIDIA_API_KEY` | ~40 RPM | https://build.nvidia.com |
+| GitHub Models | `GITHUB_MODELS_TOKEN` | ~10 RPM / 50 RPD | a GitHub PAT with `models: read` |
+| Hugging Face | `HUGGINGFACE_API_KEY` | rate-limited, many models | https://huggingface.co/settings/tokens |
+| Cloudflare Workers AI | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | 10K neurons/day | Cloudflare dashboard; also requires accepting the vision model's community license once per account |
 
 A third `ollama` provider is available (reuses `AI_MODEL`/`OLLAMA_VISION_MODEL`, requires a multimodal model such as `qwen3.5`) but is **not** in the default `VISION_PROVIDERS` chain: on a CPU-only host, multimodal inference can take minutes per photo even with the smallest model (measured: 0.8b/2b/4b all failed to complete within 2.5-5 minutes for a single small photo on an 8-core VPS with no GPU). Only add `ollama` to `VISION_PROVIDERS` if you have GPU-accelerated Ollama, or explicitly accept very slow background vision jobs.
 

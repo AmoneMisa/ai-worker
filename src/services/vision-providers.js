@@ -82,24 +82,69 @@ function mergePhotoResults(items) {
   return sanitizeVision(out);
 }
 
-async function groq(images) {
-  if (!config.groqApiKey) throw Object.assign(new Error('GROQ_NOT_CONFIGURED'), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
+// Shared shape for OpenAI-compatible chat-completions vision APIs (Groq,
+// Gemini, NVIDIA NIM, GitHub Models all speak this dialect).
+async function openAiCompatibleVision(provider, { baseUrl, apiKey, model, extraBody = {} }, images) {
+  if (!apiKey) {
+    throw Object.assign(new Error(`${provider.toUpperCase()}_NOT_CONFIGURED`), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
+  }
   const selected = images.slice(0, 3);
   const content = [{ type: 'text', text: visionPrompt(selected.map((image) => image.id)) }];
   for (const image of selected) content.push({ type: 'image_url', image_url: { url: image.url } });
-  const data = await fetchJson('https://api.groq.com/openai/v1/chat/completions', {
+  const data = await fetchJson(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${config.groqApiKey}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: config.groqVisionModel,
+      model,
       messages: [{ role: 'user', content }],
       temperature: 0,
       max_completion_tokens: 1200,
       response_format: { type: 'json_object' },
-      reasoning_effort: 'none',
+      ...extraBody,
     }),
-  }, 'groq');
+  }, provider);
   return validate(data?.choices?.[0]?.message?.content);
+}
+
+async function groq(images) {
+  return openAiCompatibleVision('groq', {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    apiKey: config.groqApiKey,
+    model: config.groqVisionModel,
+    extraBody: { reasoning_effort: 'none' },
+  }, images);
+}
+
+async function gemini(images) {
+  return openAiCompatibleVision('gemini', {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    apiKey: config.geminiApiKey,
+    model: config.geminiVisionModel,
+  }, images);
+}
+
+async function nvidia(images) {
+  return openAiCompatibleVision('nvidia', {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    apiKey: config.nvidiaApiKey,
+    model: config.nvidiaVisionModel,
+  }, images);
+}
+
+async function githubModels(images) {
+  return openAiCompatibleVision('githubmodels', {
+    baseUrl: 'https://models.github.ai/inference',
+    apiKey: config.githubModelsToken,
+    model: config.githubVisionModel,
+  }, images);
+}
+
+async function huggingface(images) {
+  return openAiCompatibleVision('huggingface', {
+    baseUrl: 'https://router.huggingface.co/v1',
+    apiKey: config.huggingfaceApiKey,
+    model: config.huggingfaceVisionModel,
+  }, images);
 }
 
 async function cloudflare(images) {
@@ -169,4 +214,6 @@ async function ollama(images) {
   }
 }
 
-export const VISION_PROVIDERS = Object.freeze({ groq, cloudflare, ollama });
+export const VISION_PROVIDERS = Object.freeze({
+  groq, gemini, nvidia, githubmodels: githubModels, huggingface, cloudflare, ollama,
+});
