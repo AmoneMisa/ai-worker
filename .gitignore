@@ -1,5 +1,4 @@
 node_modules/
-ai-worker.env
 .env
 *.log
 coverage/

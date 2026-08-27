@@ -5,8 +5,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-if [ ! -f ai-worker.env ]; then
-  echo "Missing $(pwd)/ai-worker.env (copy sample.env and fill secrets first)." >&2
+if [ ! -f .env ]; then
+  echo "Missing $(pwd)/.env (copy sample.env to .env and fill secrets first)." >&2
   exit 1
 fi
 
@@ -14,7 +14,7 @@ if [ -d .git ]; then
   git pull --ff-only
 fi
 
-ollama_data_path="$(sed -n 's/^OLLAMA_DATA_PATH=//p' ai-worker.env | tail -n 1)"
+ollama_data_path="$(sed -n 's/^OLLAMA_DATA_PATH=//p' .env | tail -n 1)"
 if [ -n "$ollama_data_path" ]; then
   if [[ "$ollama_data_path" != /* ]]; then
     echo "OLLAMA_DATA_PATH must be an absolute host path." >&2
@@ -28,7 +28,7 @@ if [ -n "$ollama_data_path" ]; then
 fi
 
 docker network inspect ai-net >/dev/null 2>&1 || docker network create ai-net
-compose=(docker compose --env-file ai-worker.env)
+compose=(docker compose --env-file .env)
 
 "${compose[@]}" pull ollama translator ai-worker
 "${compose[@]}" up -d ollama

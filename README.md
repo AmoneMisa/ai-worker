@@ -103,7 +103,7 @@ Content-Type: application/json
 }
 ```
 
-Vision is enabled by default in the provided Compose configuration. Configure at least one provider in `ai-worker.env` (`GROQ_API_KEY` or Cloudflare account/token). Provider failures fall through to the next configured provider; transient failures enter a short cooldown.
+Vision is enabled by default in the provided Compose configuration. Configure at least one provider in `.env` (`GROQ_API_KEY` or Cloudflare account/token). Provider failures fall through to the next configured provider; transient failures enter a short cooldown.
 
 ## Local development
 
@@ -113,16 +113,16 @@ Requires Node.js 24 LTS or newer. The translator image uses the current stable P
 npm ci
 npm test
 npm run check
-cp sample.env ai-worker.env
+cp sample.env .env
 ```
 
 Create the shared network once and start the stack:
 
 ```bash
 docker network create ai-net 2>/dev/null || true
-docker compose --env-file ai-worker.env up -d ollama translator
-docker compose --env-file ai-worker.env --profile setup run --rm ollama-pull
-docker compose --env-file ai-worker.env up -d ai-worker
+docker compose --env-file .env up -d ollama translator
+docker compose --env-file .env --profile setup run --rm ollama-pull
+docker compose --env-file .env up -d ai-worker
 curl http://127.0.0.1:4030/health
 ```
 
@@ -130,7 +130,7 @@ Run the benchmark after Ollama is ready:
 
 ```bash
 set -a
-. ./ai-worker.env
+. ./.env
 set +a
 npm run benchmark
 ```
@@ -141,8 +141,8 @@ npm run benchmark
 cd ~/opt
 git clone <repository-url> ai-worker
 cd ai-worker
-cp sample.env ai-worker.env
-chmod 600 ai-worker.env
+cp sample.env .env
+chmod 600 .env
 chmod +x deploy.sh
 ./deploy.sh
 ```
@@ -185,4 +185,4 @@ OLLAMA_MEMORY_LIMIT=8g
 
 `PROMPT_VERSION` and `SCHEMA_VERSION` are part of cache keys and result metadata. Increment the corresponding version when prompts or schemas change.
 
-Do not commit `ai-worker.env`; it contains internal credentials.
+Do not commit `.env`; it contains internal credentials.
