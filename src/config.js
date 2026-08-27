@@ -61,6 +61,10 @@ export const config = Object.freeze({
   githubVisionModel: env('GITHUB_VISION_MODEL', 'openai/gpt-4o'),
   huggingfaceApiKey: env('HUGGINGFACE_API_KEY'),
   huggingfaceVisionModel: env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct'),
+  llm7ApiKey: env('LLM7_API_KEY'),
+  llm7VisionModel: env('LLM7_VISION_MODEL', 'gpt-4o-mini'),
+  openrouterApiKey: env('OPENROUTER_API_KEY'),
+  openrouterVisionModel: env('OPENROUTER_VISION_MODEL', 'google/gemma-4-31b-it:free'),
   // Defaults to the same model as text extraction so Ollama keeps a single model
   // loaded (OLLAMA_MAX_LOADED_MODELS=1) instead of swapping between two on every
   // request. Only set OLLAMA_VISION_MODEL separately if that model is multimodal.

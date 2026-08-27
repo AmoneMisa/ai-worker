@@ -147,6 +147,22 @@ async function huggingface(images) {
   }, images);
 }
 
+async function llm7(images) {
+  return openAiCompatibleVision('llm7', {
+    baseUrl: 'https://api.llm7.io/v1',
+    apiKey: config.llm7ApiKey,
+    model: config.llm7VisionModel,
+  }, images);
+}
+
+async function openrouter(images) {
+  return openAiCompatibleVision('openrouter', {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: config.openrouterApiKey,
+    model: config.openrouterVisionModel,
+  }, images);
+}
+
 async function cloudflare(images) {
   if (!config.cloudflareAccountId || !config.cloudflareApiToken) {
     throw Object.assign(new Error('CLOUDFLARE_NOT_CONFIGURED'), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
@@ -215,5 +231,5 @@ async function ollama(images) {
 }
 
 export const VISION_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, githubmodels: githubModels, huggingface, cloudflare, ollama,
+  groq, gemini, nvidia, githubmodels: githubModels, huggingface, llm7, openrouter, cloudflare, ollama,
 });
