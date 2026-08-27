@@ -103,7 +103,9 @@ Content-Type: application/json
 }
 ```
 
-Vision is enabled by default in the provided Compose configuration. Configure at least one provider in `.env` (`GROQ_API_KEY`, Cloudflare account/token, or nothing extra for `ollama` since it reuses the local text model). Provider failures fall through to the next configured provider; transient failures enter a short cooldown. `ollama` runs locally against `AI_MODEL` (override with `OLLAMA_VISION_MODEL` if it must differ) and requires a multimodal Ollama model such as `qwen3.5`.
+Vision is enabled by default in the provided Compose configuration. Configure at least one provider in `.env` (`GROQ_API_KEY` or Cloudflare account/token). Provider failures fall through to the next configured provider; transient failures enter a short cooldown.
+
+A third `ollama` provider is available (reuses `AI_MODEL`/`OLLAMA_VISION_MODEL`, requires a multimodal model such as `qwen3.5`) but is **not** in the default `VISION_PROVIDERS` chain: on a CPU-only host, multimodal inference can take minutes per photo even with the smallest model (measured: 0.8b/2b/4b all failed to complete within 2.5-5 minutes for a single small photo on an 8-core VPS with no GPU). Only add `ollama` to `VISION_PROVIDERS` if you have GPU-accelerated Ollama, or explicitly accept very slow background vision jobs.
 
 ## Local development
 
