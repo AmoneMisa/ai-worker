@@ -44,6 +44,43 @@ export const VisionSchema = z.object({
   renovationLevel: EvidenceField,
 }).strict();
 
+// JSON Schema handed to Ollama as `format` (Structured Outputs, mirrors VisionSchema).
+function evidenceFieldSchema(valueSchema) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      value: valueSchema,
+      confidence: { type: 'number' },
+      evidence: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['value', 'confidence', 'evidence'],
+  };
+}
+
+const visionProperties = Object.fromEntries(VISION_FIELDS.map((field) => {
+  if (field === 'bathroomsVisible' || field === 'bedroomsVisible') {
+    return [field, evidenceFieldSchema({ type: ['integer', 'null'] })];
+  }
+  if (field === 'bathroomLayoutVisible') {
+    return [field, evidenceFieldSchema({ type: ['string', 'null'], enum: ['combined', 'separate', 'mixed', null] })];
+  }
+  if (field === 'renovationLevel') {
+    return [field, evidenceFieldSchema({
+      type: ['string', 'null'],
+      enum: ['basic', 'standard', 'modern', 'luxury', 'unfinished', 'needs_renovation', null],
+    })];
+  }
+  return [field, evidenceFieldSchema({ type: ['boolean', 'null'] })];
+}));
+
+export const visionJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: visionProperties,
+  required: VISION_FIELDS,
+};
+
 export function emptyVisionResult() {
   return Object.fromEntries(VISION_FIELDS.map((field) => [field, { value: null, confidence: 0, evidence: [] }]));
 }

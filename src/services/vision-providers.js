@@ -1,7 +1,8 @@
 import { config } from '../config.js';
 import { recordVisionProvider } from '../util/metrics.js';
-import { VisionSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
+import { VisionSchema, visionJsonSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
 import { visionPrompt } from '../prompts/vision.js';
+import { structured } from '../ollama/client.js';
 
 async function fetchJson(url, options, provider) {
   const ctrl = new AbortController();
@@ -126,4 +127,46 @@ async function cloudflare(images) {
   return mergePhotoResults(results);
 }
 
-export const VISION_PROVIDERS = Object.freeze({ groq, cloudflare });
+async function toBase64Image(image) {
+  if (/^data:image\//i.test(image.url)) {
+    const comma = image.url.indexOf(',');
+    return comma >= 0 ? image.url.slice(comma + 1) : '';
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), config.visionProviderTimeoutMs);
+  try {
+    const response = await fetch(image.url, { signal: ctrl.signal });
+    if (!response.ok) throw new Error(`IMAGE_FETCH_HTTP_${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer.toString('base64');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ollama(images) {
+  const selected = images.slice(0, 3);
+  const started = Date.now();
+  try {
+    const base64Images = await Promise.all(selected.map(toBase64Image));
+    const { data } = await structured({
+      schema: visionJsonSchema,
+      systemPrompt: visionPrompt(selected.map((image) => image.id)),
+      payload: 'Analyze the attached apartment listing photos and return the JSON object described above.',
+      images: base64Images,
+      model: config.ollamaVisionModel,
+      timeoutMs: config.ollamaVisionTimeoutMs,
+    });
+    recordVisionProvider('ollama', { ok: true, ms: Date.now() - started });
+    return validate(data);
+  } catch (error) {
+    const retryable = error?.code === 'OLLAMA_TIMEOUT' || error?.code === 'OLLAMA_UNAVAILABLE'
+      || /OLLAMA_HTTP_5\d\d/.test(error?.message || '');
+    recordVisionProvider('ollama', { ok: false, ms: Date.now() - started, timeout: error?.code === 'OLLAMA_TIMEOUT' });
+    const wrapped = new Error(`OLLAMA_VISION_FAILED: ${error.message}`);
+    wrapped.retryable = retryable;
+    throw wrapped;
+  }
+}
+
+export const VISION_PROVIDERS = Object.freeze({ groq, cloudflare, ollama });

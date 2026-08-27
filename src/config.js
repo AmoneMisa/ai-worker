@@ -53,6 +53,11 @@ export const config = Object.freeze({
   cloudflareAccountId: env('CLOUDFLARE_ACCOUNT_ID'),
   cloudflareApiToken: env('CLOUDFLARE_API_TOKEN', env('CLOUDFLARE_AUTH_TOKEN')),
   cloudflareVisionModel: env('CLOUDFLARE_VISION_MODEL', '@cf/meta/llama-3.2-11b-vision-instruct'),
+  // Defaults to the same model as text extraction so Ollama keeps a single model
+  // loaded (OLLAMA_MAX_LOADED_MODELS=1) instead of swapping between two on every
+  // request. Only set OLLAMA_VISION_MODEL separately if that model is multimodal.
+  ollamaVisionModel: env('OLLAMA_VISION_MODEL', env('AI_MODEL', 'qwen3.5:2b')),
+  ollamaVisionTimeoutMs: number('OLLAMA_VISION_TIMEOUT_MS', 180_000, { min: 1, integer: true }),
 
   concurrency: number('AI_CONCURRENCY', 1, { min: 1, integer: true }),
   queueMaxPending: number('AI_QUEUE_MAX_PENDING', 100, { min: 1, integer: true }),
