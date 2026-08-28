@@ -61,6 +61,8 @@ export const config = Object.freeze({
   huggingfaceVisionModel: env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct'),
   llm7ApiKey: env('LLM7_API_KEY'),
   llm7VisionModel: env('LLM7_VISION_MODEL', 'gpt-4o-mini'),
+  mistralApiKey: env('MISTRAL_API_KEY'),
+  mistralVisionModel: env('MISTRAL_VISION_MODEL', 'pixtral-large-2411'),
   openrouterApiKey: env('OPENROUTER_API_KEY'),
   openrouterVisionModel: env('OPENROUTER_VISION_MODEL', 'google/gemma-4-31b-it:free'),
   // Defaults to the same model as text extraction so Ollama keeps a single model

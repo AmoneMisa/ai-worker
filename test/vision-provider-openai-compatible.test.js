@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env.VISION_PROVIDERS = 'groq,gemini,nvidia,huggingface,llm7,openrouter';
+process.env.VISION_PROVIDERS = 'groq,gemini,nvidia,huggingface,llm7,openrouter,mistral';
 process.env.GROQ_API_KEY = 'test-groq-key';
 process.env.GEMINI_API_KEY = 'test-gemini-key';
 process.env.NVIDIA_API_KEY = 'test-nvidia-key';
 process.env.HUGGINGFACE_API_KEY = 'test-huggingface-key';
 process.env.LLM7_API_KEY = 'test-llm7-key';
 process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+process.env.MISTRAL_API_KEY = 'test-mistral-key';
 
 const { emptyVisionResult } = await import('../src/schemas/vision.js');
 const { analyzePhotos } = await import('../src/services/vision.js');

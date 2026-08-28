@@ -103,7 +103,7 @@ Content-Type: application/json
 }
 ```
 
-Vision is enabled by default in the provided Compose configuration. The default chain is `groq,gemini,nvidia,huggingface,llm7,openrouter,cloudflare` - configure at least one provider's key in `.env`; unconfigured providers fail instantly and fall through, so it's fine to leave the full chain even with some keys blank. Provider failures fall through to the next configured provider; transient (rate-limit/5xx) failures enter a short cooldown for that provider.
+Vision is enabled by default in the provided Compose configuration. The default chain is `groq,gemini,nvidia,huggingface,llm7,openrouter,mistral,cloudflare` - configure at least one provider's key in `.env`; unconfigured providers fail instantly and fall through, so it's fine to leave the full chain even with some keys blank. Provider failures fall through to the next configured provider; transient (rate-limit/5xx) failures enter a short cooldown for that provider.
 
 | Provider | Env var | Free tier (approx) | Get a key |
 |---|---|---|---|
@@ -113,6 +113,7 @@ Vision is enabled by default in the provided Compose configuration. The default 
 | Hugging Face | `HUGGINGFACE_API_KEY` | rate-limited, many models | https://huggingface.co/settings/tokens |
 | llm7.io | `LLM7_API_KEY` | ~30 RPM (120 with a key) | https://llm7.io - no registration needed for basic access; commercial-use terms undocumented |
 | OpenRouter | `OPENROUTER_API_KEY` | ~20 RPM / 200 RPD (`:free` models) | https://openrouter.ai/keys - commercial-use terms undocumented for free models |
+| Mistral | `MISTRAL_API_KEY` | ~1 RPS / 500K TPM (~1B tokens/month) | https://console.mistral.ai |
 | Cloudflare Workers AI | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | 10K neurons/day | Cloudflare dashboard; also requires accepting the vision model's community license once per account |
 
 A third `ollama` provider is available (reuses `AI_MODEL`/`OLLAMA_VISION_MODEL`, requires a multimodal model such as `qwen3.5`) but is **not** in the default `VISION_PROVIDERS` chain: on a CPU-only host, multimodal inference can take minutes per photo even with the smallest model (measured: 0.8b/2b/4b all failed to complete within 2.5-5 minutes for a single small photo on an 8-core VPS with no GPU). Only add `ollama` to `VISION_PROVIDERS` if you have GPU-accelerated Ollama, or explicitly accept very slow background vision jobs.

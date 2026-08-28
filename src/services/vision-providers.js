@@ -155,6 +155,14 @@ async function openrouter(images) {
   }, images);
 }
 
+async function mistral(images) {
+  return openAiCompatibleVision('mistral', {
+    baseUrl: 'https://api.mistral.ai/v1',
+    apiKey: config.mistralApiKey,
+    model: config.mistralVisionModel,
+  }, images);
+}
+
 async function cloudflare(images) {
   if (!config.cloudflareAccountId || !config.cloudflareApiToken) {
     throw Object.assign(new Error('CLOUDFLARE_NOT_CONFIGURED'), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
@@ -223,5 +231,5 @@ async function ollama(images) {
 }
 
 export const VISION_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, huggingface, llm7, openrouter, cloudflare, ollama,
+  groq, gemini, nvidia, huggingface, llm7, openrouter, mistral, cloudflare, ollama,
 });
