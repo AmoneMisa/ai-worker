@@ -4,8 +4,6 @@ import { config } from './config.js';
 import { log } from './util/logger.js';
 import { startQueue, closeQueue, queueStats } from './queue/queue.js';
 import { memoryStats } from './cache/memory.js';
-import { ollamaHealthy } from './ollama/client.js';
-import { translatorHealthy } from './services/translator.js';
 import { analyzePhotos } from './services/vision.js';
 import { PUBLIC_EXTRACTION_KINDS } from './services/extract.js';
 import { executeJob } from './application/job-handler.js';
@@ -33,29 +31,32 @@ app.use('/ai', (req, res, next) => {
   next();
 });
 
+const TEXT_PROVIDER_API_KEYS = {
+  groq: 'groqApiKey',
+  gemini: 'geminiApiKey',
+  nvidia: 'nvidiaApiKey',
+  huggingface: 'huggingfaceApiKey',
+  llm7: 'llm7ApiKey',
+  openrouter: 'openrouterApiKey',
+  mistral: 'mistralApiKey',
+};
+
 app.get('/health', asyncRoute(async (_req, res) => {
-  const textRequired = config.enabled && config.textEnabled;
-  const [ai, translator] = textRequired
-    ? await Promise.all([ollamaHealthy(), translatorHealthy()])
-    : [false, false];
+  const textProvidersConfigured = config.textProviders.some((provider) => Boolean(config[TEXT_PROVIDER_API_KEYS[provider]]));
   const health = evaluateHealth({
     enabled: config.enabled,
     textEnabled: config.textEnabled,
-    translationFallbackToQwen: config.translationFallbackToQwen,
-    ai,
-    translator,
+    textProvidersConfigured,
   });
   res.json({
     ok: health.ok,
     enabled: config.enabled,
-    ai,
-    translator,
+    text: config.textEnabled,
+    textProviders: config.textProviders,
     vision: config.visionEnabled,
     visionProviders: config.visionProviders,
     executor: queueStats(),
     cache: memoryStats(),
-    model: config.model,
-    translationModel: 'facebook/m2m100_418M',
   });
 }));
 

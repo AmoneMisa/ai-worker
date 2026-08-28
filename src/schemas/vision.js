@@ -44,7 +44,7 @@ export const VisionSchema = z.object({
   renovationLevel: EvidenceField,
 }).strict();
 
-// JSON Schema handed to Ollama as `format` (Structured Outputs, mirrors VisionSchema).
+// JSON Schema embedded in the provider payload (Structured Outputs, mirrors VisionSchema).
 function evidenceFieldSchema(valueSchema) {
   return {
     type: 'object',

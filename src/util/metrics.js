@@ -16,6 +16,7 @@ export const metrics = {
   queueWaitCount: 0,
   byKind: {},
   visionProviders: {},
+  textProviders: {},
 };
 
 function kindMetrics(kind) {
@@ -25,21 +26,29 @@ function kindMetrics(kind) {
   return metrics.byKind[kind];
 }
 
-function providerMetrics(provider) {
-  if (!metrics.visionProviders[provider]) {
-    metrics.visionProviders[provider] = { attempts: 0, succeeded: 0, failed: 0, rateLimited: 0, timeouts: 0, latencyMsTotal: 0 };
+function providerMetrics(bucket, provider) {
+  if (!metrics[bucket][provider]) {
+    metrics[bucket][provider] = { attempts: 0, succeeded: 0, failed: 0, rateLimited: 0, timeouts: 0, latencyMsTotal: 0 };
   }
-  return metrics.visionProviders[provider];
+  return metrics[bucket][provider];
 }
 
-export function recordVisionProvider(provider, { ok = false, ms = 0, status = 0, timeout = false } = {}) {
-  const item = providerMetrics(provider);
+export function recordProviderResult(bucket, provider, { ok = false, ms = 0, status = 0, timeout = false } = {}) {
+  const item = providerMetrics(bucket, provider);
   item.attempts += 1;
   item.latencyMsTotal += Math.max(0, Number(ms) || 0);
   if (ok) item.succeeded += 1;
   else item.failed += 1;
   if (status === 429) item.rateLimited += 1;
   if (timeout) item.timeouts += 1;
+}
+
+export function recordVisionProvider(provider, opts) {
+  return recordProviderResult('visionProviders', provider, opts);
+}
+
+export function recordTextProvider(provider, opts) {
+  return recordProviderResult('textProviders', provider, opts);
 }
 
 export function recordText(ms) {
@@ -68,16 +77,19 @@ export function snapshot({ cache, queue } = {}) {
     avgOllamaMs: item.count ? Math.round(item.ollamaMsTotal / item.count) : 0,
     avgTotalMs: item.count ? Math.round(item.totalMsTotal / item.count) : 0,
   }]));
-  const visionProviders = Object.fromEntries(Object.entries(metrics.visionProviders).map(([provider, item]) => [provider, {
+  const providerSnapshot = (bucket) => Object.fromEntries(Object.entries(metrics[bucket]).map(([provider, item]) => [provider, {
     ...item,
     avgLatencyMs: item.attempts ? Math.round(item.latencyMsTotal / item.attempts) : 0,
   }]));
+  const visionProviders = providerSnapshot('visionProviders');
+  const textProviders = providerSnapshot('textProviders');
   const memory = process.memoryUsage();
 
   return {
     ...metrics,
     byKind,
     visionProviders,
+    textProviders,
     avgTextMs: metrics.textCount ? Math.round(metrics.textMsTotal / metrics.textCount) : 0,
     avgImageMs: metrics.imageCount ? Math.round(metrics.imageMsTotal / metrics.imageCount) : 0,
     avgQueueWaitMs: metrics.queueWaitCount ? Math.round(metrics.queueWaitMsTotal / metrics.queueWaitCount) : 0,

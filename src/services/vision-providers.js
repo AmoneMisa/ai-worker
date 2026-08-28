@@ -1,46 +1,7 @@
 import { config } from '../config.js';
-import { recordVisionProvider } from '../util/metrics.js';
-import { VisionSchema, visionJsonSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
+import { VisionSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
 import { visionPrompt } from '../prompts/vision.js';
-import { structured } from '../ollama/client.js';
-
-async function fetchJson(url, options, provider) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), config.visionProviderTimeoutMs);
-  const started = Date.now();
-  try {
-    const response = await fetch(url, { ...options, signal: ctrl.signal });
-    const ms = Date.now() - started;
-    if (!response.ok) {
-      recordVisionProvider(provider, { ok: false, ms, status: response.status });
-      const body = await response.text().catch(() => '');
-      const error = new Error(`${provider.toUpperCase()}_HTTP_${response.status}: ${body.slice(0, 200)}`);
-      error.status = response.status;
-      error.retryable = response.status === 429 || response.status >= 500;
-      throw error;
-    }
-    recordVisionProvider(provider, { ok: true, ms });
-    return await response.json();
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      recordVisionProvider(provider, { ok: false, ms: Date.now() - started, timeout: true });
-      const timeout = new Error(`${provider.toUpperCase()}_TIMEOUT`);
-      timeout.code = 'VISION_PROVIDER_TIMEOUT';
-      timeout.retryable = true;
-      throw timeout;
-    }
-    if (!error?.status) recordVisionProvider(provider, { ok: false, ms: Date.now() - started });
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function parseModelJson(value) {
-  if (value && typeof value === 'object') return value;
-  const text = String(value || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  return JSON.parse(text);
-}
+import { fetchJson, parseModelJson } from '../util/httpProvider.js';
 
 function validate(value) {
   let parsedJson;
@@ -188,48 +149,6 @@ async function cloudflare(images) {
   return mergePhotoResults(results);
 }
 
-async function toBase64Image(image) {
-  if (/^data:image\//i.test(image.url)) {
-    const comma = image.url.indexOf(',');
-    return comma >= 0 ? image.url.slice(comma + 1) : '';
-  }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), config.visionProviderTimeoutMs);
-  try {
-    const response = await fetch(image.url, { signal: ctrl.signal });
-    if (!response.ok) throw new Error(`IMAGE_FETCH_HTTP_${response.status}`);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    return buffer.toString('base64');
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function ollama(images) {
-  const selected = images.slice(0, 3);
-  const started = Date.now();
-  try {
-    const base64Images = await Promise.all(selected.map(toBase64Image));
-    const { data } = await structured({
-      schema: visionJsonSchema,
-      systemPrompt: visionPrompt(selected.map((image) => image.id)),
-      payload: 'Analyze the attached apartment listing photos and return the JSON object described above.',
-      images: base64Images,
-      model: config.ollamaVisionModel,
-      timeoutMs: config.ollamaVisionTimeoutMs,
-    });
-    recordVisionProvider('ollama', { ok: true, ms: Date.now() - started });
-    return validate(data);
-  } catch (error) {
-    const retryable = error?.code === 'OLLAMA_TIMEOUT' || error?.code === 'OLLAMA_UNAVAILABLE'
-      || /OLLAMA_HTTP_5\d\d/.test(error?.message || '');
-    recordVisionProvider('ollama', { ok: false, ms: Date.now() - started, timeout: error?.code === 'OLLAMA_TIMEOUT' });
-    const wrapped = new Error(`OLLAMA_VISION_FAILED: ${error.message}`);
-    wrapped.retryable = retryable;
-    throw wrapped;
-  }
-}
-
 export const VISION_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, huggingface, llm7, openrouter, mistral, cloudflare, ollama,
+  groq, gemini, nvidia, huggingface, llm7, openrouter, mistral, cloudflare,
 });

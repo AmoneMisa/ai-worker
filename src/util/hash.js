@@ -34,13 +34,15 @@ const KIND_PROMPT_VERSION = {
   candidate: 2,
 };
 
-// Cache key = model + promptVersion + schemaVersion + kind + kindPromptVersion
-// + normalized input. Any relevant prompt/model/schema change invalidates the
+// Cache key = promptVersion + schemaVersion + kind + kindPromptVersion +
+// normalized input. Any relevant prompt/schema change invalidates the
 // corresponding old result without forcing unrelated kinds to re-run.
+// Providers are interchangeable (multi-provider chain), so no specific model
+// name is part of the key — PROMPT_VERSION/SCHEMA_VERSION drive invalidation.
 export function extractionKey(kind, text, knownFacts = {}) {
   const h = createHash('sha256');
   const kindPromptVersion = KIND_PROMPT_VERSION[kind] || 1;
-  h.update(`${config.model}:v${config.promptVersion}:s${config.schemaVersion}:${kind}:k${kindPromptVersion}\n`);
+  h.update(`multiprovider:v${config.promptVersion}:s${config.schemaVersion}:${kind}:k${kindPromptVersion}\n`);
   h.update(normalizeText(text));
   h.update('\n');
   h.update(JSON.stringify(stable(knownFacts)));

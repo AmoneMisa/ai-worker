@@ -132,7 +132,6 @@ export function startQueue(handler) {
   log.info('ai executor started', {
     concurrency: config.concurrency,
     maxPending: config.queueMaxPending,
-    model: config.model,
   });
 }
 

@@ -2,7 +2,7 @@
   "name": "ai-worker",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared local-AI enrichment service (Ollama) for flat-finder + Personal-Site vacancies. Deterministic parsers stay in the apps; this is the LLM enrichment layer.",
+  "description": "Shared external-LLM enrichment service for flat-finder + Personal-Site vacancies. Deterministic parsers stay in the apps; this is the LLM enrichment layer, backed by a fallback chain of external providers (Groq, Gemini, NVIDIA, Hugging Face, llm7, OpenRouter, Mistral, Cloudflare).",
   "type": "module",
   "main": "src/server.js",
   "engines": {
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/application/extraction.js && node --check src/application/health.js && node --check src/application/job-handler.js && node --check src/cache/memory.js && node --check src/queue/queue.js && node --check src/services/extract.js && node --check src/services/translation.js && node --check src/services/vision.js && node --check src/services/vision-providers.js && node --check src/ollama/client.js",
+    "check": "node --check src/server.js && node --check src/application/extraction.js && node --check src/application/health.js && node --check src/application/job-handler.js && node --check src/cache/memory.js && node --check src/queue/queue.js && node --check src/services/extract.js && node --check src/services/text.js && node --check src/services/text-providers.js && node --check src/services/vision.js && node --check src/services/vision-providers.js && node --check src/util/httpProvider.js && node --check src/util/translationGuard.js",
     "test": "node --test",
     "benchmark": "node scripts/benchmark.mjs"
   },

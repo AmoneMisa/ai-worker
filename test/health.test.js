@@ -6,36 +6,29 @@ test('disabled text services do not make health fail', () => {
   assert.deepEqual(evaluateHealth({
     enabled: false,
     textEnabled: true,
-    translationFallbackToQwen: true,
-    ai: false,
-    translator: false,
+    textProvidersConfigured: false,
   }), {
     ok: true,
     textHealthy: true,
-    translationHealthy: true,
   });
 });
 
-test('qwen fallback keeps translation healthy when translator is down', () => {
+test('healthy when at least one text provider is configured', () => {
   const health = evaluateHealth({
     enabled: true,
     textEnabled: true,
-    translationFallbackToQwen: true,
-    ai: true,
-    translator: false,
+    textProvidersConfigured: true,
   });
   assert.equal(health.ok, true);
-  assert.equal(health.translationHealthy, true);
+  assert.equal(health.textHealthy, true);
 });
 
-test('translator failure is unhealthy when fallback is disabled', () => {
+test('unhealthy when text is required and no provider is configured', () => {
   const health = evaluateHealth({
     enabled: true,
     textEnabled: true,
-    translationFallbackToQwen: false,
-    ai: true,
-    translator: false,
+    textProvidersConfigured: false,
   });
   assert.equal(health.ok, false);
-  assert.equal(health.translationHealthy, false);
+  assert.equal(health.textHealthy, false);
 });

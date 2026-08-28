@@ -9,7 +9,8 @@ const INT = ['integer', 'null'];
 const BOOL = ['boolean', 'null'];
 const STR = ['string', 'null'];
 
-// JSON Schema handed to Ollama as `format` (Structured Outputs, spec 12).
+// JSON Schema embedded in the provider payload so the model returns matching
+// structured output (spec 12).
 const apartmentProperties = {
     dealType: { type: STR, enum: ['rent', 'sale', 'daily_rent', null] },
     propertyType: { type: STR, enum: ['apartment', 'house', 'room', 'studio', 'commercial', null] },

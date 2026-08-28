@@ -35,13 +35,7 @@ export const config = Object.freeze({
   textEnabled: bool('AI_TEXT_ENABLED', true),
   visionEnabled: bool('AI_VISION_ENABLED', false),
 
-  ollamaUrl: env('OLLAMA_URL', 'http://ollama:11434').replace(/\/$/, ''),
-  model: env('AI_MODEL', 'qwen3.5:2b'),
-  think: bool('AI_THINK', false),
-
-  translationUrl: env('TRANSLATION_URL', 'http://translator:4040').replace(/\/$/, ''),
-  translationServiceTimeoutMs: number('TRANSLATION_SERVICE_TIMEOUT_MS', 30_000, { min: 1, integer: true }),
-  translationFallbackToQwen: bool('TRANSLATION_FALLBACK_TO_QWEN', true),
+  textProviders: list('TEXT_PROVIDERS', 'groq,gemini,nvidia,huggingface,llm7,openrouter,mistral'),
 
   visionProviders: list('VISION_PROVIDERS', 'groq,cloudflare'),
   visionConcurrency: number('VISION_CONCURRENCY', 1, { min: 1, integer: true }),
@@ -50,32 +44,33 @@ export const config = Object.freeze({
   visionCacheTtlMs: number('VISION_CACHE_TTL_MS', 30 * 24 * 60 * 60_000, { min: 1, integer: true }),
   groqApiKey: env('GROQ_API_KEY'),
   groqVisionModel: env('GROQ_VISION_MODEL', 'qwen/qwen3.6-27b'),
+  groqTextModel: env('GROQ_TEXT_MODEL', env('GROQ_VISION_MODEL', 'qwen/qwen3.6-27b')),
   cloudflareAccountId: env('CLOUDFLARE_ACCOUNT_ID'),
   cloudflareApiToken: env('CLOUDFLARE_API_TOKEN', env('CLOUDFLARE_AUTH_TOKEN')),
   cloudflareVisionModel: env('CLOUDFLARE_VISION_MODEL', '@cf/meta/llama-3.2-11b-vision-instruct'),
   geminiApiKey: env('GEMINI_API_KEY'),
   geminiVisionModel: env('GEMINI_VISION_MODEL', 'gemini-2.5-flash'),
+  geminiTextModel: env('GEMINI_TEXT_MODEL', env('GEMINI_VISION_MODEL', 'gemini-2.5-flash')),
   nvidiaApiKey: env('NVIDIA_API_KEY'),
   nvidiaVisionModel: env('NVIDIA_VISION_MODEL', 'meta/llama-3.2-11b-vision-instruct'),
+  nvidiaTextModel: env('NVIDIA_TEXT_MODEL', env('NVIDIA_VISION_MODEL', 'meta/llama-3.2-11b-vision-instruct')),
   huggingfaceApiKey: env('HUGGINGFACE_API_KEY'),
   huggingfaceVisionModel: env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct'),
+  huggingfaceTextModel: env('HUGGINGFACE_TEXT_MODEL', env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct')),
   llm7ApiKey: env('LLM7_API_KEY'),
   llm7VisionModel: env('LLM7_VISION_MODEL', 'gpt-4o-mini'),
+  llm7TextModel: env('LLM7_TEXT_MODEL', env('LLM7_VISION_MODEL', 'gpt-4o-mini')),
   mistralApiKey: env('MISTRAL_API_KEY'),
   mistralVisionModel: env('MISTRAL_VISION_MODEL', 'pixtral-large-2411'),
+  mistralTextModel: env('MISTRAL_TEXT_MODEL', env('MISTRAL_VISION_MODEL', 'pixtral-large-2411')),
   openrouterApiKey: env('OPENROUTER_API_KEY'),
   openrouterVisionModel: env('OPENROUTER_VISION_MODEL', 'google/gemma-4-31b-it:free'),
-  // Defaults to the same model as text extraction so Ollama keeps a single model
-  // loaded (OLLAMA_MAX_LOADED_MODELS=1) instead of swapping between two on every
-  // request. Only set OLLAMA_VISION_MODEL separately if that model is multimodal.
-  ollamaVisionModel: env('OLLAMA_VISION_MODEL', env('AI_MODEL', 'qwen3.5:2b')),
-  ollamaVisionTimeoutMs: number('OLLAMA_VISION_TIMEOUT_MS', 180_000, { min: 1, integer: true }),
+  openrouterTextModel: env('OPENROUTER_TEXT_MODEL', env('OPENROUTER_VISION_MODEL', 'google/gemma-4-31b-it:free')),
 
   concurrency: number('AI_CONCURRENCY', 1, { min: 1, integer: true }),
   queueMaxPending: number('AI_QUEUE_MAX_PENDING', 100, { min: 1, integer: true }),
-  textContext: number('AI_TEXT_CONTEXT', 8192, { min: 256, integer: true }),
+  // Per-request HTTP timeout for text-provider (extraction/translation) calls.
   textTimeoutMs: number('AI_TEXT_TIMEOUT_MS', 120_000, { min: 1, integer: true }),
-  translationTimeoutMs: number('AI_TRANSLATION_TIMEOUT_MS', 180_000, { min: 1, integer: true }),
 
   maxRetries: number('AI_MAX_RETRIES', 1, { min: 0, integer: true }),
   maxPhotosPerListing: number('AI_MAX_PHOTOS_PER_LISTING', 4, { min: 1, max: 20, integer: true }),

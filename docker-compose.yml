@@ -1,78 +1,21 @@
 services:
-  ollama:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.14}
-    restart: unless-stopped
-    volumes:
-      - ${OLLAMA_DATA_PATH:-ollama-data}:/root/.ollama
-    environment:
-      - OLLAMA_NUM_PARALLEL=1
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=5m
-    networks: [ internal ]
-    cpus: "${OLLAMA_CPUS:-4.0}"
-    mem_limit: "${OLLAMA_MEMORY_LIMIT:-8g}"
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 20s
-
-  ollama-pull:
-    image: ${OLLAMA_IMAGE:-ollama/ollama:0.32.14}
-    profiles: [ setup ]
-    restart: "no"
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    entrypoint: ["/bin/ollama"]
-    command: ["pull", "${AI_MODEL:-qwen3.5:2b}"]
-    depends_on:
-      ollama:
-        condition: service_healthy
-    networks: [ internal ]
-
-  translator:
-    image: ${TRANSLATOR_IMAGE:-ghcr.io/amonemisa/ai-worker-translator:latest}
-    restart: unless-stopped
-    init: true
-    environment:
-      - TRANSLATOR_THREADS=${TRANSLATOR_THREADS:-2}
-      - TRANSLATOR_MAX_SOURCE_TOKENS=${TRANSLATOR_MAX_SOURCE_TOKENS:-420}
-      - OMP_NUM_THREADS=${TRANSLATOR_THREADS:-2}
-    networks: [ internal ]
-    cpus: "${TRANSLATOR_CPUS:-1.5}"
-    mem_limit: "${TRANSLATOR_MEMORY_LIMIT:-2g}"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4040/health', timeout=3).read()"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-
   ai-worker:
     image: ${AI_WORKER_IMAGE:-ghcr.io/amonemisa/ai-worker:latest}
     restart: unless-stopped
     init: true
     environment:
-      - OLLAMA_URL=http://ollama:11434
-      - TRANSLATION_URL=http://translator:4040
-      - TRANSLATION_SERVICE_TIMEOUT_MS=${TRANSLATION_SERVICE_TIMEOUT_MS:-30000}
-      - TRANSLATION_FALLBACK_TO_QWEN=${TRANSLATION_FALLBACK_TO_QWEN:-true}
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
       - AI_VISION_ENABLED=${AI_VISION_ENABLED:-true}
       - AI_API_KEY=${AI_API_KEY:-}
-      - AI_MODEL=${AI_MODEL:-qwen3.5:2b}
-      - AI_THINK=${AI_THINK:-false}
       - AI_CONCURRENCY=${AI_CONCURRENCY:-1}
       - AI_QUEUE_MAX_PENDING=${AI_QUEUE_MAX_PENDING:-100}
-      - AI_TEXT_CONTEXT=${AI_TEXT_CONTEXT:-8192}
       - AI_TEXT_TIMEOUT_MS=${AI_TEXT_TIMEOUT_MS:-120000}
-      - AI_TRANSLATION_TIMEOUT_MS=${AI_TRANSLATION_TIMEOUT_MS:-180000}
       - AI_MAX_RETRIES=${AI_MAX_RETRIES:-1}
       - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.6}
       - AI_MAX_TEXT_CHARS=${AI_MAX_TEXT_CHARS:-32000}
       - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-4}
+      - TEXT_PROVIDERS=${TEXT_PROVIDERS:-groq,gemini,nvidia,huggingface,llm7,openrouter,mistral}
       - VISION_PROVIDERS=${VISION_PROVIDERS:-groq,gemini,nvidia,huggingface,llm7,openrouter,mistral,cloudflare}
       - VISION_CONCURRENCY=${VISION_CONCURRENCY:-1}
       - VISION_PROVIDER_TIMEOUT_MS=${VISION_PROVIDER_TIMEOUT_MS:-30000}
@@ -80,32 +23,34 @@ services:
       - VISION_CACHE_TTL_MS=${VISION_CACHE_TTL_MS:-2592000000}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.6-27b}
+      - GROQ_TEXT_MODEL=${GROQ_TEXT_MODEL:-}
       - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
       - CLOUDFLARE_VISION_MODEL=${CLOUDFLARE_VISION_MODEL:-@cf/meta/llama-3.2-11b-vision-instruct}
-      - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-}
-      - OLLAMA_VISION_TIMEOUT_MS=${OLLAMA_VISION_TIMEOUT_MS:-180000}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - GEMINI_TEXT_MODEL=${GEMINI_TEXT_MODEL:-}
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - NVIDIA_VISION_MODEL=${NVIDIA_VISION_MODEL:-meta/llama-3.2-11b-vision-instruct}
+      - NVIDIA_TEXT_MODEL=${NVIDIA_TEXT_MODEL:-}
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
       - HUGGINGFACE_VISION_MODEL=${HUGGINGFACE_VISION_MODEL:-Qwen/Qwen2.5-VL-3B-Instruct}
+      - HUGGINGFACE_TEXT_MODEL=${HUGGINGFACE_TEXT_MODEL:-}
       - LLM7_API_KEY=${LLM7_API_KEY:-}
       - LLM7_VISION_MODEL=${LLM7_VISION_MODEL:-gpt-4o-mini}
+      - LLM7_TEXT_MODEL=${LLM7_TEXT_MODEL:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_VISION_MODEL=${OPENROUTER_VISION_MODEL:-google/gemma-4-31b-it:free}
+      - OPENROUTER_TEXT_MODEL=${OPENROUTER_TEXT_MODEL:-}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
       - MISTRAL_VISION_MODEL=${MISTRAL_VISION_MODEL:-pixtral-large-2411}
+      - MISTRAL_TEXT_MODEL=${MISTRAL_TEXT_MODEL:-}
       - PROMPT_VERSION=${PROMPT_VERSION:-1}
       - SCHEMA_VERSION=${SCHEMA_VERSION:-3}
       - AI_CACHE_MAX_ENTRIES=${AI_CACHE_MAX_ENTRIES:-2000}
       - AI_CACHE_TTL_MS=${AI_CACHE_TTL_MS:-86400000}
       - AI_TRANSLATION_CACHE_TTL_MS=${AI_TRANSLATION_CACHE_TTL_MS:-604800000}
-    depends_on:
-      ollama:
-        condition: service_healthy
-    networks: [ internal, ai-net ]
+    networks: [ ai-net ]
     ports:
       - "127.0.0.1:4030:4030"
     mem_limit: "${AI_WORKER_MEMORY_LIMIT:-1g}"
@@ -118,10 +63,6 @@ services:
       retries: 3
       start_period: 15s
 
-volumes:
-  ollama-data:
-
 networks:
-  internal:
   ai-net:
     external: true
