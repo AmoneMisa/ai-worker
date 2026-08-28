@@ -103,14 +103,13 @@ Content-Type: application/json
 }
 ```
 
-Vision is enabled by default in the provided Compose configuration. The default chain is `groq,gemini,nvidia,githubmodels,huggingface,llm7,openrouter,cloudflare` - configure at least one provider's key in `.env`; unconfigured providers fail instantly and fall through, so it's fine to leave the full chain even with some keys blank. Provider failures fall through to the next configured provider; transient (rate-limit/5xx) failures enter a short cooldown for that provider.
+Vision is enabled by default in the provided Compose configuration. The default chain is `groq,gemini,nvidia,huggingface,llm7,openrouter,cloudflare` - configure at least one provider's key in `.env`; unconfigured providers fail instantly and fall through, so it's fine to leave the full chain even with some keys blank. Provider failures fall through to the next configured provider; transient (rate-limit/5xx) failures enter a short cooldown for that provider.
 
 | Provider | Env var | Free tier (approx) | Get a key |
 |---|---|---|---|
 | Groq | `GROQ_API_KEY` | model-dependent TPM limit | https://console.groq.com |
 | Gemini | `GEMINI_API_KEY` | ~15 RPM / 1,500 RPD | https://aistudio.google.com/apikey |
 | NVIDIA NIM | `NVIDIA_API_KEY` | ~40 RPM | https://build.nvidia.com |
-| GitHub Models | `GITHUB_MODELS_TOKEN` | ~10 RPM / 50 RPD | a GitHub PAT with `models: read` |
 | Hugging Face | `HUGGINGFACE_API_KEY` | rate-limited, many models | https://huggingface.co/settings/tokens |
 | llm7.io | `LLM7_API_KEY` | ~30 RPM (120 with a key) | https://llm7.io - no registration needed for basic access; commercial-use terms undocumented |
 | OpenRouter | `OPENROUTER_API_KEY` | ~20 RPM / 200 RPD (`:free` models) | https://openrouter.ai/keys - commercial-use terms undocumented for free models |

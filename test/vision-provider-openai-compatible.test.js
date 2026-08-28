@@ -1,11 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env.VISION_PROVIDERS = 'groq,gemini,nvidia,githubmodels,huggingface,llm7,openrouter';
+process.env.VISION_PROVIDERS = 'groq,gemini,nvidia,huggingface,llm7,openrouter';
 process.env.GROQ_API_KEY = 'test-groq-key';
 process.env.GEMINI_API_KEY = 'test-gemini-key';
 process.env.NVIDIA_API_KEY = 'test-nvidia-key';
-process.env.GITHUB_MODELS_TOKEN = 'test-github-token';
 process.env.HUGGINGFACE_API_KEY = 'test-huggingface-key';
 process.env.LLM7_API_KEY = 'test-llm7-key';
 process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
@@ -13,7 +12,7 @@ process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 const { emptyVisionResult } = await import('../src/schemas/vision.js');
 const { analyzePhotos } = await import('../src/services/vision.js');
 
-test('falls through groq -> gemini -> nvidia -> githubmodels to the first that succeeds', async () => {
+test('falls through groq -> gemini to nvidia, the first that succeeds', async () => {
   const vision = emptyVisionResult();
   vision.balcony = { value: true, confidence: 0.9, evidence: ['visible railing'] };
 

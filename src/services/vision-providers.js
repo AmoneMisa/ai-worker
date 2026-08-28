@@ -83,7 +83,7 @@ function mergePhotoResults(items) {
 }
 
 // Shared shape for OpenAI-compatible chat-completions vision APIs (Groq,
-// Gemini, NVIDIA NIM, GitHub Models all speak this dialect).
+// Gemini, NVIDIA NIM all speak this dialect).
 async function openAiCompatibleVision(provider, { baseUrl, apiKey, model, extraBody = {} }, images) {
   if (!apiKey) {
     throw Object.assign(new Error(`${provider.toUpperCase()}_NOT_CONFIGURED`), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
@@ -128,14 +128,6 @@ async function nvidia(images) {
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     apiKey: config.nvidiaApiKey,
     model: config.nvidiaVisionModel,
-  }, images);
-}
-
-async function githubModels(images) {
-  return openAiCompatibleVision('githubmodels', {
-    baseUrl: 'https://models.github.ai/inference',
-    apiKey: config.githubModelsToken,
-    model: config.githubVisionModel,
   }, images);
 }
 
@@ -231,5 +223,5 @@ async function ollama(images) {
 }
 
 export const VISION_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, githubmodels: githubModels, huggingface, llm7, openrouter, cloudflare, ollama,
+  groq, gemini, nvidia, huggingface, llm7, openrouter, cloudflare, ollama,
 });

@@ -57,8 +57,6 @@ export const config = Object.freeze({
   geminiVisionModel: env('GEMINI_VISION_MODEL', 'gemini-2.5-flash'),
   nvidiaApiKey: env('NVIDIA_API_KEY'),
   nvidiaVisionModel: env('NVIDIA_VISION_MODEL', 'meta/llama-3.2-11b-vision-instruct'),
-  githubModelsToken: env('GITHUB_MODELS_TOKEN'),
-  githubVisionModel: env('GITHUB_VISION_MODEL', 'openai/gpt-4o'),
   huggingfaceApiKey: env('HUGGINGFACE_API_KEY'),
   huggingfaceVisionModel: env('HUGGINGFACE_VISION_MODEL', 'Qwen/Qwen2.5-VL-3B-Instruct'),
   llm7ApiKey: env('LLM7_API_KEY'),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// No GEMINI_API_KEY/NVIDIA_API_KEY/GITHUB_MODELS_TOKEN set in this process.
+// No GEMINI_API_KEY/NVIDIA_API_KEY set in this process.
 const { VISION_PROVIDERS } = await import('../src/services/vision-providers.js');
 
 test('a provider with no API key configured fails instantly without a network call', async () => {
