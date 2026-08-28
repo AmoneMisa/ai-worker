@@ -114,7 +114,7 @@ Both text extraction/translation and vision are enabled by default in the provid
 | llm7.io | `LLM7_API_KEY` | vision + text | ~30 RPM (120 with a key) | https://llm7.io - no registration needed for basic access; commercial-use terms undocumented |
 | OpenRouter | `OPENROUTER_API_KEY` | vision + text | ~20 RPM / 200 RPD (`:free` models) | https://openrouter.ai/keys - commercial-use terms undocumented for free models |
 | Mistral | `MISTRAL_API_KEY` | vision + text | ~1 RPS / 500K TPM (~1B tokens/month) | https://console.mistral.ai |
-| Cloudflare Workers AI | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | vision only | 10K neurons/day | Cloudflare dashboard; also requires accepting the vision model's community license once per account |
+| Cloudflare Workers AI | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` | vision only | 10K neurons/day | Cloudflare dashboard; the vision model's community license must be accepted once per account before it will respond (send `{"prompt":"agree"}` to that model's `/ai/run/...` endpoint with your token) |
 
 Each provider has an optional `<PROVIDER>_TEXT_MODEL` env var for text/translation calls, separate from `<PROVIDER>_VISION_MODEL`; it defaults to the same model as the vision variant, so no extra configuration is required unless you want a cheaper/faster text-only model.
 
