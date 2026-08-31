@@ -43,8 +43,9 @@ pull_services=()
 up_services=()
 
 if [[ "$deploy_config_changed" == "true" ]]; then
-  # Compose changes can alter image refs, dependencies, or limits.
-  pull_services=(ai-worker)
+  # Compose changes can alter image refs, dependencies, or limits. FreeLLMAPI is
+  # a runtime dependency and must be pulled/reconciled together with ai-worker.
+  pull_services=(freellmapi ai-worker)
 elif [[ "$ai_worker_changed" == "true" ]]; then
   pull_services+=(ai-worker)
   up_services+=(ai-worker)
@@ -55,7 +56,7 @@ if ((${#pull_services[@]} > 0)); then
 fi
 
 if [[ "$deploy_config_changed" == "true" ]]; then
-  "${compose[@]}" up -d --remove-orphans ai-worker
+  "${compose[@]}" up -d --remove-orphans freellmapi ai-worker
 elif ((${#up_services[@]} > 0)); then
   # Only recreate services whose image changed; leave unrelated dependencies alone.
   "${compose[@]}" up -d --no-deps --remove-orphans "${up_services[@]}"
@@ -84,5 +85,5 @@ done
 
 echo "ai-worker did not become healthy; recent container logs:" >&2
 "${compose[@]}" ps >&2
-"${compose[@]}" logs --tail 100 ai-worker >&2
+"${compose[@]}" logs --tail 100 freellmapi ai-worker >&2
 exit 1
