@@ -43,13 +43,14 @@ function mergePhotoResults(items) {
   return sanitizeVision(out);
 }
 
-// Shared shape for OpenAI-compatible chat-completions vision APIs (Groq,
-// Gemini, NVIDIA NIM all speak this dialect).
+// Shared shape for OpenAI-compatible chat-completions vision APIs. FreeLLMAPI
+// speaks this dialect and routes image requests only to vision-capable free
+// endpoints. Direct providers remain available for explicit opt-in/debugging.
 async function openAiCompatibleVision(provider, { baseUrl, apiKey, model, extraBody = {} }, images) {
   if (!apiKey) {
     throw Object.assign(new Error(`${provider.toUpperCase()}_NOT_CONFIGURED`), { code: 'VISION_PROVIDER_NOT_CONFIGURED' });
   }
-  const selected = images.slice(0, 3);
+  const selected = images.slice(0, config.maxPhotosPerListing);
   const content = [{ type: 'text', text: visionPrompt(selected.map((image) => image.id)) }];
   for (const image of selected) content.push({ type: 'image_url', image_url: { url: image.url } });
   const data = await fetchJson(`${baseUrl}/chat/completions`, {
@@ -59,12 +60,20 @@ async function openAiCompatibleVision(provider, { baseUrl, apiKey, model, extraB
       model,
       messages: [{ role: 'user', content }],
       temperature: 0,
-      max_completion_tokens: 1200,
+      max_completion_tokens: 3200,
       response_format: { type: 'json_object' },
       ...extraBody,
     }),
   }, provider);
   return validate(data?.choices?.[0]?.message?.content);
+}
+
+async function freellmapi(images) {
+  return openAiCompatibleVision('freellmapi', {
+    baseUrl: config.freeLlmApiBaseUrl,
+    apiKey: config.freeLlmApiKey,
+    model: config.freeLlmApiVisionModel,
+  }, images);
 }
 
 async function groq(images) {
@@ -138,7 +147,7 @@ async function cloudflare(images) {
         body: JSON.stringify({
           messages: [{ role: 'user', content: visionPrompt([image.id]) }],
           image: image.url,
-          max_tokens: 1200,
+          max_tokens: 3200,
         }),
       },
       'cloudflare',
@@ -150,5 +159,5 @@ async function cloudflare(images) {
 }
 
 export const VISION_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, huggingface, llm7, openrouter, mistral, cloudflare,
+  freellmapi, groq, gemini, nvidia, huggingface, llm7, openrouter, mistral, cloudflare,
 });
