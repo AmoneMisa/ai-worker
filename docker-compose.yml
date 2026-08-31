@@ -1,8 +1,139 @@
 services:
+  freellmapi:
+    # Pin the runtime code; FreeLLMAPI still refreshes its signed free-model
+    # catalog independently, so provider/model data can stay current without a
+    # surprise application-code upgrade during deploy.
+    image: ${FREELLMAPI_IMAGE:-ghcr.io/tashfeenahmed/freellmapi:v0.9.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - ENCRYPTION_KEY=${FREELLMAPI_ENCRYPTION_KEY:-}
+      - FREEAPI_DB_PATH=/app/server/data/freellmapi.db
+      # Existing ai-worker provider credentials are imported declaratively at
+      # boot. They are persisted encrypted by FreeLLMAPI and never need to be
+      # copied through its dashboard.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - LLM7_API_KEY=${LLM7_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - CLOUDFLARE_AUTH_TOKEN=${CLOUDFLARE_AUTH_TOKEN:-}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        export FREEAPI_CONFIG_JSON="$$(node - <<'NODE'
+        const keys = [];
+        const add = (platform, raw) => {
+          const key = String(raw || '').trim();
+          keys.push(key
+            ? { platform, key, label: 'env', enabled: true }
+            : { platform, key: 'disabled-by-env', label: 'env', enabled: false });
+        };
+        add('groq', process.env.GROQ_API_KEY);
+        add('google', process.env.GEMINI_API_KEY);
+        add('nvidia', process.env.NVIDIA_API_KEY);
+        add('huggingface', process.env.HUGGINGFACE_API_KEY);
+        add('llm7', process.env.LLM7_API_KEY);
+        add('openrouter', process.env.OPENROUTER_API_KEY);
+        add('mistral', process.env.MISTRAL_API_KEY);
+
+        const cfAccount = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+        const cfToken = String(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_AUTH_TOKEN || '').trim();
+        keys.push(cfAccount && cfToken
+          ? { platform: 'cloudflare', key: cfAccount + ':' + cfToken, label: 'env', enabled: true }
+          : { platform: 'cloudflare', key: 'disabled:disabled', label: 'env', enabled: false });
+
+        // Zero-key safety net. Kilo is deliberately not auto-enabled because
+        // its anonymous free route may log prompts/outputs for training.
+        keys.push({ platform: 'ovh', label: 'keyless', enabled: true });
+        keys.push({ platform: 'aihorde', label: 'keyless', enabled: true });
+
+        process.stdout.write(JSON.stringify({
+          keys,
+          routing: { strategy: 'balanced', keySelectionStrategy: 'least-remaining' },
+        }));
+        NODE
+        )"
+
+        rm -f /app/server/data/unified.key
+        node server/dist/index.js &
+        server_pid=$$!
+        terminate() {
+          kill -TERM "$$server_pid" >/dev/null 2>&1 || true
+          wait "$$server_pid" || true
+        }
+        trap terminate TERM INT
+
+        exported=false
+        attempt=0
+        while [ "$$attempt" -lt 100 ]; do
+          attempt=$$((attempt + 1))
+          if ! kill -0 "$$server_pid" >/dev/null 2>&1; then
+            wait "$$server_pid"
+            exit $$?
+          fi
+
+          if (cd /app/server && node - <<'NODE'
+        const fs = require('node:fs');
+        const Database = require('better-sqlite3');
+        const dbPath = process.env.FREEAPI_DB_PATH || '/app/server/data/freeapi.db';
+        try {
+          const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+          const row = db.prepare("SELECT value FROM settings WHERE key = 'unified_api_key' LIMIT 1").get();
+          db.close();
+          const key = String(row?.value || '').trim();
+          if (!key) process.exit(1);
+          fs.writeFileSync('/app/server/data/unified.key', key + '\n', { mode: 0o600 });
+        } catch {
+          process.exit(1);
+        }
+        NODE
+          ); then
+            exported=true
+            break
+          fi
+          sleep 0.1
+        done
+
+        if [ "$$exported" != "true" ]; then
+          echo "FreeLLMAPI started but its unified key could not be exported." >&2
+          terminate
+          exit 1
+        fi
+
+        wait "$$server_pid"
+    volumes:
+      - freellmapi-data:/app/server/data
+    networks: [ ai-net ]
+    ports:
+      - "127.0.0.1:${FREELLMAPI_HOST_PORT:-3001}:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: "${FREELLMAPI_MEMORY_LIMIT:-768m}"
+    cpus: "${FREELLMAPI_CPUS:-0.5}"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /app/server/data/unified.key && node -e \"fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   ai-worker:
     image: ${AI_WORKER_IMAGE:-ghcr.io/amonemisa/ai-worker:latest}
     restart: unless-stopped
     init: true
+    depends_on:
+      freellmapi:
+        condition: service_healthy
     environment:
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
@@ -14,42 +145,26 @@ services:
       - AI_MAX_RETRIES=${AI_MAX_RETRIES:-1}
       - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.6}
       - AI_MAX_TEXT_CHARS=${AI_MAX_TEXT_CHARS:-32000}
-      - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-4}
-      - TEXT_PROVIDERS=${TEXT_PROVIDERS:-groq,gemini,nvidia,huggingface,llm7,openrouter,mistral}
-      - VISION_PROVIDERS=${VISION_PROVIDERS:-groq,gemini,nvidia,huggingface,llm7,openrouter,mistral,cloudflare}
+      - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-10}
+      - TEXT_PROVIDERS=${TEXT_PROVIDERS:-freellmapi}
+      - VISION_PROVIDERS=${VISION_PROVIDERS:-freellmapi}
+      - FREELLMAPI_BASE_URL=${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
+      # Production does not need FREELLMAPI_API_KEY. The router exports its
+      # generated key before healthcheck and this service reads the shared file.
+      - FREELLMAPI_API_KEY_FILE=/run/freellmapi/unified.key
+      - FREELLMAPI_TEXT_MODEL=${FREELLMAPI_TEXT_MODEL:-auto:balanced}
+      - FREELLMAPI_VISION_MODEL=${FREELLMAPI_VISION_MODEL:-auto:smart}
       - VISION_CONCURRENCY=${VISION_CONCURRENCY:-1}
       - VISION_PROVIDER_TIMEOUT_MS=${VISION_PROVIDER_TIMEOUT_MS:-30000}
       - VISION_COOLDOWN_MS=${VISION_COOLDOWN_MS:-300000}
       - VISION_CACHE_TTL_MS=${VISION_CACHE_TTL_MS:-2592000000}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-qwen/qwen3.6-27b}
-      - GROQ_TEXT_MODEL=${GROQ_TEXT_MODEL:-}
-      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
-      - CLOUDFLARE_VISION_MODEL=${CLOUDFLARE_VISION_MODEL:-@cf/meta/llama-3.2-11b-vision-instruct}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-3.6-flash}
-      - GEMINI_TEXT_MODEL=${GEMINI_TEXT_MODEL:-}
-      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
-      - NVIDIA_VISION_MODEL=${NVIDIA_VISION_MODEL:-meta/llama-3.2-11b-vision-instruct}
-      - NVIDIA_TEXT_MODEL=${NVIDIA_TEXT_MODEL:-}
-      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
-      - HUGGINGFACE_VISION_MODEL=${HUGGINGFACE_VISION_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}
-      - HUGGINGFACE_TEXT_MODEL=${HUGGINGFACE_TEXT_MODEL:-}
-      - LLM7_API_KEY=${LLM7_API_KEY:-}
-      - LLM7_VISION_MODEL=${LLM7_VISION_MODEL:-gpt-5.4-mini}
-      - LLM7_TEXT_MODEL=${LLM7_TEXT_MODEL:-gpt-oss}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_VISION_MODEL=${OPENROUTER_VISION_MODEL:-google/gemma-4-31b-it:free}
-      - OPENROUTER_TEXT_MODEL=${OPENROUTER_TEXT_MODEL:-}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
-      - MISTRAL_VISION_MODEL=${MISTRAL_VISION_MODEL:-mistral-small-latest}
-      - MISTRAL_TEXT_MODEL=${MISTRAL_TEXT_MODEL:-mistral-small-latest}
-      - PROMPT_VERSION=${PROMPT_VERSION:-1}
-      - SCHEMA_VERSION=${SCHEMA_VERSION:-3}
+      - PROMPT_VERSION=${PROMPT_VERSION:-2}
+      - SCHEMA_VERSION=${SCHEMA_VERSION:-4}
       - AI_CACHE_MAX_ENTRIES=${AI_CACHE_MAX_ENTRIES:-2000}
       - AI_CACHE_TTL_MS=${AI_CACHE_TTL_MS:-86400000}
       - AI_TRANSLATION_CACHE_TTL_MS=${AI_TRANSLATION_CACHE_TTL_MS:-604800000}
+    volumes:
+      - freellmapi-data:/run/freellmapi:ro
     networks: [ ai-net ]
     ports:
       - "127.0.0.1:4030:4030"
@@ -62,6 +177,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+volumes:
+  freellmapi-data:
 
 networks:
   ai-net:
