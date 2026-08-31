@@ -14,6 +14,31 @@ if [[ "${SKIP_GIT_PULL:-false}" != "true" && -d .git ]]; then
   git pull --ff-only
 fi
 
+# FreeLLMAPI encrypts imported provider credentials in its persistent SQLite DB.
+# Generate its at-rest encryption secret once on the server so no new manual
+# credential is required for the router integration. Never silently replace a
+# non-empty invalid value: rotating this key would make persisted provider keys
+# unreadable.
+encryption_line="$(grep -E '^FREELLMAPI_ENCRYPTION_KEY=' .env | tail -n 1 || true)"
+encryption_key="${encryption_line#*=}"
+if [[ -z "$encryption_key" ]]; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "openssl is required to generate FREELLMAPI_ENCRYPTION_KEY." >&2
+    exit 1
+  fi
+  encryption_key="$(openssl rand -hex 32)"
+  if grep -q -E '^FREELLMAPI_ENCRYPTION_KEY=' .env; then
+    sed -i "s/^FREELLMAPI_ENCRYPTION_KEY=.*/FREELLMAPI_ENCRYPTION_KEY=${encryption_key}/" .env
+  else
+    printf '\nFREELLMAPI_ENCRYPTION_KEY=%s\n' "$encryption_key" >> .env
+  fi
+  chmod 600 .env
+  echo "Generated persistent FREELLMAPI_ENCRYPTION_KEY in .env."
+elif [[ ! "$encryption_key" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+  echo "FREELLMAPI_ENCRYPTION_KEY must be exactly 64 hexadecimal characters." >&2
+  exit 1
+fi
+
 selective=false
 if [[ -n "${AI_WORKER_CHANGED+x}" || -n "${DEPLOY_CONFIG_CHANGED+x}" ]]; then
   selective=true
