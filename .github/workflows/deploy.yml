@@ -39,6 +39,32 @@ jobs:
       - name: Validate Compose bootstrap
         run: docker compose config --quiet
 
+      - name: Smoke test FreeLLMAPI bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          export FREELLMAPI_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+          docker network inspect ai-net >/dev/null 2>&1 || docker network create ai-net
+          trap 'docker compose down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
+          docker compose up -d freellmapi
+
+          for attempt in $(seq 1 60); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$(docker compose ps -q freellmapi)")"
+            if [[ "$status" == "healthy" ]]; then
+              docker compose exec -T freellmapi sh -c 'test -s /app/server/data/unified.key'
+              exit 0
+            fi
+            if [[ "$status" == "unhealthy" ]]; then
+              docker compose logs freellmapi
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker compose logs freellmapi
+          echo "FreeLLMAPI did not become healthy." >&2
+          exit 1
+
   changes:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
