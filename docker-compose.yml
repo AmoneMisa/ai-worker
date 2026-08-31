@@ -26,8 +26,9 @@ services:
       - CLOUDFLARE_AUTH_TOKEN=${CLOUDFLARE_AUTH_TOKEN:-}
     command:
       - /bin/sh
-      - -ec
+      - -c
       - |
+        set -eu
         export FREEAPI_CONFIG_JSON="$$(node - <<'NODE'
         const keys = [];
         const add = (platform, raw) => {
@@ -61,7 +62,54 @@ services:
         }));
         NODE
         )"
-        exec node server/dist/index.js
+
+        rm -f /app/server/data/unified.key
+        node server/dist/index.js &
+        server_pid=$$!
+        terminate() {
+          kill -TERM "$$server_pid" >/dev/null 2>&1 || true
+          wait "$$server_pid" || true
+        }
+        trap terminate TERM INT
+
+        exported=false
+        attempt=0
+        while [ "$$attempt" -lt 100 ]; do
+          attempt=$$((attempt + 1))
+          if ! kill -0 "$$server_pid" >/dev/null 2>&1; then
+            wait "$$server_pid"
+            exit $$?
+          fi
+
+          if (cd /app/server && node - <<'NODE'
+        const fs = require('node:fs');
+        const Database = require('better-sqlite3');
+        const dbPath = process.env.FREEAPI_DB_PATH || '/app/server/data/freeapi.db';
+        try {
+          const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+          const row = db.prepare("SELECT value FROM settings WHERE key = 'unified_api_key' LIMIT 1").get();
+          db.close();
+          const key = String(row?.value || '').trim();
+          if (!key) process.exit(1);
+          fs.writeFileSync('/app/server/data/unified.key', key + '\n', { mode: 0o600 });
+        } catch {
+          process.exit(1);
+        }
+        NODE
+          ); then
+            exported=true
+            break
+          fi
+          sleep 0.1
+        done
+
+        if [ "$$exported" != "true" ]; then
+          echo "FreeLLMAPI started but its unified key could not be exported." >&2
+          terminate
+          exit 1
+        fi
+
+        wait "$$server_pid"
     volumes:
       - freellmapi-data:/app/server/data
     networks: [ ai-net ]
@@ -73,7 +121,7 @@ services:
     cpus: "${FREELLMAPI_CPUS:-0.5}"
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD-SHELL", "test -s /app/server/data/unified.key && node -e \"fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -101,9 +149,9 @@ services:
       - TEXT_PROVIDERS=${TEXT_PROVIDERS:-freellmapi}
       - VISION_PROVIDERS=${VISION_PROVIDERS:-freellmapi}
       - FREELLMAPI_BASE_URL=${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
-      # Production does not need FREELLMAPI_API_KEY. ai-worker reads the router's
-      # generated unified key from this read-only SQLite mount after healthcheck.
-      - FREELLMAPI_DB_PATH=/run/freellmapi/freellmapi.db
+      # Production does not need FREELLMAPI_API_KEY. The router exports its
+      # generated key before healthcheck and this service reads the shared file.
+      - FREELLMAPI_API_KEY_FILE=/run/freellmapi/unified.key
       - FREELLMAPI_TEXT_MODEL=${FREELLMAPI_TEXT_MODEL:-auto:balanced}
       - FREELLMAPI_VISION_MODEL=${FREELLMAPI_VISION_MODEL:-auto:smart}
       - VISION_CONCURRENCY=${VISION_CONCURRENCY:-1}
