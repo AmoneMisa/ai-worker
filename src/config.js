@@ -35,9 +35,16 @@ export const config = Object.freeze({
   textEnabled: bool('AI_TEXT_ENABLED', true),
   visionEnabled: bool('AI_VISION_ENABLED', false),
 
-  textProviders: list('TEXT_PROVIDERS', 'groq,gemini,nvidia,huggingface,llm7,openrouter,mistral'),
+  // FreeLLMAPI is the default production gateway. It only catalogs free-tier
+  // endpoints and performs provider/model failover internally. Direct providers
+  // remain available for explicit opt-in/debugging, but are no longer defaults.
+  textProviders: list('TEXT_PROVIDERS', 'freellmapi'),
+  visionProviders: list('VISION_PROVIDERS', 'freellmapi'),
+  freeLlmApiBaseUrl: env('FREELLMAPI_BASE_URL', 'http://freellmapi:3001/v1').replace(/\/$/, ''),
+  freeLlmApiKey: env('FREELLMAPI_API_KEY'),
+  freeLlmApiTextModel: env('FREELLMAPI_TEXT_MODEL', 'auto:balanced'),
+  freeLlmApiVisionModel: env('FREELLMAPI_VISION_MODEL', 'auto:smart'),
 
-  visionProviders: list('VISION_PROVIDERS', 'groq,cloudflare'),
   visionConcurrency: number('VISION_CONCURRENCY', 1, { min: 1, integer: true }),
   visionProviderTimeoutMs: number('VISION_PROVIDER_TIMEOUT_MS', 30_000, { min: 1, integer: true }),
   visionCooldownMs: number('VISION_COOLDOWN_MS', 5 * 60_000, { min: 0, integer: true }),
@@ -81,8 +88,8 @@ export const config = Object.freeze({
   maxTextChars: number('AI_MAX_TEXT_CHARS', 32_000, { min: 1, integer: true }),
   apiKey: env('AI_API_KEY'),
 
-  promptVersion: number('PROMPT_VERSION', 1, { min: 1, integer: true }),
-  schemaVersion: number('SCHEMA_VERSION', 3, { min: 1, integer: true }),
+  promptVersion: number('PROMPT_VERSION', 2, { min: 1, integer: true }),
+  schemaVersion: number('SCHEMA_VERSION', 4, { min: 1, integer: true }),
   cacheTtlMs: number('AI_CACHE_TTL_MS', 24 * 60 * 60 * 1000, { min: 1, integer: true }),
   translationCacheTtlMs: number('AI_TRANSLATION_CACHE_TTL_MS', 7 * 24 * 60 * 60 * 1000, { min: 1, integer: true }),
   cacheMaxEntries: number('AI_CACHE_MAX_ENTRIES', 2_000, { min: 10, integer: true }),
