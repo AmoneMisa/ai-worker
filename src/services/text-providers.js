@@ -4,6 +4,7 @@
 // prompt already instructs the model to match "the supplied JSON schema").
 import { config } from '../config.js';
 import { fetchJson, parseModelJson } from '../util/httpProvider.js';
+import { resolveFreeLlmApiKey } from '../util/freellmapiKey.js';
 
 function validate(value) {
   try {
@@ -40,7 +41,10 @@ async function openAiCompatibleText(provider, { baseUrl, apiKey, model, extraBod
 async function freellmapi(request) {
   return openAiCompatibleText('freellmapi', {
     baseUrl: config.freeLlmApiBaseUrl,
-    apiKey: config.freeLlmApiKey,
+    apiKey: resolveFreeLlmApiKey({
+      explicitKey: config.freeLlmApiKey,
+      dbPath: config.freeLlmApiDbPath,
+    }),
     model: config.freeLlmApiTextModel,
   }, request);
 }
