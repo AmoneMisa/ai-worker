@@ -1,35 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { resolveFreeLlmApiKey } from '../src/util/freellmapiKey.js';
 
-test('explicit FreeLLMAPI key overrides SQLite discovery', () => {
+test('explicit FreeLLMAPI key overrides file discovery', () => {
   assert.equal(resolveFreeLlmApiKey({
     explicitKey: ' freellmapi-explicit ',
-    dbPath: '/does/not/exist.db',
+    keyFile: '/does/not/exist.key',
   }), 'freellmapi-explicit');
 });
 
-test('FreeLLMAPI unified key is discovered from a read-only SQLite database', () => {
+test('FreeLLMAPI unified key is discovered from the exported shared file', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ai-worker-freellmapi-'));
-  const dbPath = join(dir, 'freellmapi.db');
+  const keyFile = join(dir, 'unified.key');
   try {
-    const db = new DatabaseSync(dbPath);
-    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)')
-      .run('unified_api_key', 'freellmapi-generated-test');
-    db.close();
-
-    assert.equal(resolveFreeLlmApiKey({ dbPath }), 'freellmapi-generated-test');
+    writeFileSync(keyFile, 'freellmapi-generated-test\n', { mode: 0o600 });
+    assert.equal(resolveFreeLlmApiKey({ keyFile }), 'freellmapi-generated-test');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('missing FreeLLMAPI database degrades to an unconfigured provider', () => {
-  assert.equal(resolveFreeLlmApiKey({ dbPath: '/does/not/exist.db' }), '');
+test('missing FreeLLMAPI key file degrades to an unconfigured provider', () => {
+  assert.equal(resolveFreeLlmApiKey({ keyFile: '/does/not/exist.key' }), '');
 });
