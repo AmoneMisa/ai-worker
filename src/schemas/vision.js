@@ -6,12 +6,19 @@ const EvidenceField = z.object({
   evidence: z.array(z.string()).max(12).catch([]),
 }).strict();
 
+// Keep this list aligned with the image-observable part of Flat Finder's public
+// Listing contract. Fields whose meaning is contractual/textual (petsAllowed,
+// commission, lease term, etc.) deliberately stay in text extraction instead of
+// being guessed from photos.
 export const VISION_FIELDS = [
-  'airConditioner',
-  'balcony',
+  'roomsVisible',
+  'bedroomsVisible',
   'bathroomsVisible',
   'bathroomLayoutVisible',
-  'bedroomsVisible',
+  'airConditioner',
+  'balcony',
+  'terrace',
+  'privateYard',
   'furnished',
   'parkingVisible',
   'closedYard',
@@ -20,29 +27,26 @@ export const VISION_FIELDS = [
   'washingMachineVisible',
   'dishwasherVisible',
   'tvVisible',
+  'microwaveVisible',
+  'ovenVisible',
+  'bidetVisible',
+  'walkInClosetVisible',
+  'bathtubVisible',
+  'showerVisible',
+  'gasVisible',
+  'heatingVisible',
+  'hotWaterVisible',
+  'internetEquipmentVisible',
   'gasWaterHeaterVisible',
   'waterBoilerVisible',
+  'euroLayoutVisible',
+  'newBuildingVisible',
   'renovationLevel',
 ];
 
-export const VisionSchema = z.object({
-  airConditioner: EvidenceField,
-  balcony: EvidenceField,
-  bathroomsVisible: EvidenceField,
-  bathroomLayoutVisible: EvidenceField,
-  bedroomsVisible: EvidenceField,
-  furnished: EvidenceField,
-  parkingVisible: EvidenceField,
-  closedYard: EvidenceField,
-  elevatorVisible: EvidenceField,
-  kitchenVisible: EvidenceField,
-  washingMachineVisible: EvidenceField,
-  dishwasherVisible: EvidenceField,
-  tvVisible: EvidenceField,
-  gasWaterHeaterVisible: EvidenceField,
-  waterBoilerVisible: EvidenceField,
-  renovationLevel: EvidenceField,
-}).strict();
+export const VisionSchema = z.object(
+  Object.fromEntries(VISION_FIELDS.map((field) => [field, EvidenceField])),
+).strict();
 
 // JSON Schema embedded in the provider payload (Structured Outputs, mirrors VisionSchema).
 function evidenceFieldSchema(valueSchema) {
@@ -58,8 +62,15 @@ function evidenceFieldSchema(valueSchema) {
   };
 }
 
+const integerFields = new Set(['roomsVisible', 'bathroomsVisible', 'bedroomsVisible']);
+const booleanFields = new Set(VISION_FIELDS.filter((field) => ![
+  ...integerFields,
+  'bathroomLayoutVisible',
+  'renovationLevel',
+].includes(field)));
+
 const visionProperties = Object.fromEntries(VISION_FIELDS.map((field) => {
-  if (field === 'bathroomsVisible' || field === 'bedroomsVisible') {
+  if (integerFields.has(field)) {
     return [field, evidenceFieldSchema({ type: ['integer', 'null'] })];
   }
   if (field === 'bathroomLayoutVisible') {
@@ -68,7 +79,7 @@ const visionProperties = Object.fromEntries(VISION_FIELDS.map((field) => {
   if (field === 'renovationLevel') {
     return [field, evidenceFieldSchema({
       type: ['string', 'null'],
-      enum: ['basic', 'standard', 'modern', 'luxury', 'unfinished', 'needs_renovation', null],
+      enum: ['basic', 'good', 'modern', 'luxury', 'needs_renovation', null],
     })];
   }
   return [field, evidenceFieldSchema({ type: ['boolean', 'null'] })];
@@ -87,20 +98,6 @@ export function emptyVisionResult() {
 
 export function sanitizeVision(value) {
   const out = emptyVisionResult();
-  const booleanFields = new Set([
-    'airConditioner',
-    'balcony',
-    'furnished',
-    'parkingVisible',
-    'closedYard',
-    'elevatorVisible',
-    'kitchenVisible',
-    'washingMachineVisible',
-    'dishwasherVisible',
-    'tvVisible',
-    'gasWaterHeaterVisible',
-    'waterBoilerVisible',
-  ]);
 
   for (const field of VISION_FIELDS) {
     const item = value?.[field];
@@ -109,7 +106,7 @@ export function sanitizeVision(value) {
     const confidence = Math.max(0, Math.min(1, Number(item.confidence) || 0));
     let v = item.value ?? null;
 
-    if ((field === 'bathroomsVisible' || field === 'bedroomsVisible') && v != null) {
+    if (integerFields.has(field) && v != null) {
       v = Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : null;
     }
 
@@ -119,10 +116,10 @@ export function sanitizeVision(value) {
     }
 
     if (field === 'renovationLevel' && v != null) {
-      const level = String(v).toLowerCase().trim();
-      v = ['basic', 'standard', 'modern', 'luxury', 'unfinished', 'needs_renovation'].includes(level)
-        ? level
-        : null;
+      const raw = String(v).toLowerCase().trim();
+      const aliases = { standard: 'good', unfinished: 'needs_renovation' };
+      const level = aliases[raw] || raw;
+      v = ['basic', 'good', 'modern', 'luxury', 'needs_renovation'].includes(level) ? level : null;
     }
 
     // A negative fact is almost never provable from listing photos. Convert weak
