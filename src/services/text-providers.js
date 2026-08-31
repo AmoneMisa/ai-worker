@@ -29,12 +29,20 @@ async function openAiCompatibleText(provider, { baseUrl, apiKey, model, extraBod
         { role: 'user', content: JSON.stringify({ schema, ...payload }) },
       ],
       temperature: 0,
-      max_completion_tokens: 2000,
+      max_completion_tokens: 2400,
       response_format: { type: 'json_object' },
       ...extraBody,
     }),
   }, provider, { bucket: 'textProviders', timeoutMs: config.textTimeoutMs });
   return validate(data?.choices?.[0]?.message?.content);
+}
+
+async function freellmapi(request) {
+  return openAiCompatibleText('freellmapi', {
+    baseUrl: config.freeLlmApiBaseUrl,
+    apiKey: config.freeLlmApiKey,
+    model: config.freeLlmApiTextModel,
+  }, request);
 }
 
 async function groq(request) {
@@ -95,5 +103,5 @@ async function mistral(request) {
 }
 
 export const TEXT_PROVIDERS = Object.freeze({
-  groq, gemini, nvidia, huggingface, llm7, openrouter, mistral,
+  freellmapi, groq, gemini, nvidia, huggingface, llm7, openrouter, mistral,
 });
