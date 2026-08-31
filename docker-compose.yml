@@ -1,8 +1,37 @@
 services:
+  freellmapi:
+    image: ${FREELLMAPI_IMAGE:-ghcr.io/tashfeenahmed/freellmapi:latest}
+    restart: unless-stopped
+    init: true
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - ENCRYPTION_KEY=${FREELLMAPI_ENCRYPTION_KEY:-}
+      - FREEAPI_DB_PATH=/app/server/data/freellmapi.db
+    volumes:
+      - freellmapi-data:/app/server/data
+    networks: [ ai-net ]
+    ports:
+      - "127.0.0.1:${FREELLMAPI_HOST_PORT:-3001}:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: "${FREELLMAPI_MEMORY_LIMIT:-768m}"
+    cpus: "${FREELLMAPI_CPUS:-0.5}"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   ai-worker:
     image: ${AI_WORKER_IMAGE:-ghcr.io/amonemisa/ai-worker:latest}
     restart: unless-stopped
     init: true
+    depends_on:
+      freellmapi:
+        condition: service_healthy
     environment:
       - AI_ENABLED=${AI_ENABLED:-true}
       - AI_TEXT_ENABLED=${AI_TEXT_ENABLED:-true}
@@ -14,7 +43,7 @@ services:
       - AI_MAX_RETRIES=${AI_MAX_RETRIES:-1}
       - AI_MIN_CONFIDENCE=${AI_MIN_CONFIDENCE:-0.6}
       - AI_MAX_TEXT_CHARS=${AI_MAX_TEXT_CHARS:-32000}
-      - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-4}
+      - AI_MAX_PHOTOS_PER_LISTING=${AI_MAX_PHOTOS_PER_LISTING:-10}
       - TEXT_PROVIDERS=${TEXT_PROVIDERS:-freellmapi}
       - VISION_PROVIDERS=${VISION_PROVIDERS:-freellmapi}
       - FREELLMAPI_BASE_URL=${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
@@ -66,6 +95,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+volumes:
+  freellmapi-data:
 
 networks:
   ai-net:
