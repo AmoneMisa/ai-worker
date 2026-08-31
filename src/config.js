@@ -41,7 +41,10 @@ export const config = Object.freeze({
   textProviders: list('TEXT_PROVIDERS', 'freellmapi'),
   visionProviders: list('VISION_PROVIDERS', 'freellmapi'),
   freeLlmApiBaseUrl: env('FREELLMAPI_BASE_URL', 'http://freellmapi:3001/v1').replace(/\/$/, ''),
+  // Optional explicit override. In production ai-worker can read the unified
+  // key directly from the read-only FreeLLMAPI SQLite volume instead.
   freeLlmApiKey: env('FREELLMAPI_API_KEY'),
+  freeLlmApiDbPath: env('FREELLMAPI_DB_PATH', '/run/freellmapi/freellmapi.db'),
   freeLlmApiTextModel: env('FREELLMAPI_TEXT_MODEL', 'auto:balanced'),
   freeLlmApiVisionModel: env('FREELLMAPI_VISION_MODEL', 'auto:smart'),
 
