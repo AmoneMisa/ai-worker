@@ -74,7 +74,7 @@ async function freellmapi(images) {
     baseUrl: config.freeLlmApiBaseUrl,
     apiKey: resolveFreeLlmApiKey({
       explicitKey: config.freeLlmApiKey,
-      dbPath: config.freeLlmApiDbPath,
+      keyFile: config.freeLlmApiKeyFile,
     }),
     model: config.freeLlmApiVisionModel,
   }, images);
