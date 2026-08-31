@@ -35,7 +35,7 @@ Missing credentials are explicitly disabled, so removing a key from `.env` does 
 
 Provider credentials are encrypted at rest in FreeLLMAPI's persistent SQLite database. `deploy.sh` automatically generates `FREELLMAPI_ENCRYPTION_KEY` the first time it is needed and writes it to the server `.env`; later deploys preserve it.
 
-FreeLLMAPI also generates its own `freellmapi-*` unified client key. There is **no copy/paste step** for that key: production mounts the FreeLLMAPI data volume read-only into `ai-worker`, and `ai-worker` reads `settings.unified_api_key` directly from SQLite after the router healthcheck. `FREELLMAPI_API_KEY` remains only as an optional local-development override.
+FreeLLMAPI also generates its own `freellmapi-*` unified client key. There is **no copy/paste step** for that key: the FreeLLMAPI startup wrapper exports it into `unified.key` inside the persistent data volume, and its healthcheck does not pass until that file exists. Production mounts the same volume read-only into `ai-worker`, which reads `/run/freellmapi/unified.key`. `FREELLMAPI_API_KEY` remains only as an optional local-development override.
 
 The default FreeLLMAPI runtime is pinned to `v0.9.0` so application code does not unexpectedly change during a deploy. FreeLLMAPI can still refresh its signed free-model catalog independently. Override `FREELLMAPI_IMAGE` deliberately when validating a newer release.
 
@@ -141,7 +141,7 @@ docker compose --env-file .env up -d freellmapi ai-worker
 curl http://127.0.0.1:4030/health
 ```
 
-When running `node src/server.js` directly without the Compose volume mount, set `FREELLMAPI_API_KEY` to an existing router key or point `FREELLMAPI_DB_PATH` at a readable FreeLLMAPI database.
+When running `node src/server.js` directly without the Compose volume mount, set `FREELLMAPI_API_KEY` to an existing router key or set `FREELLMAPI_API_KEY_FILE` to a readable exported key file.
 
 ## Production deployment
 
