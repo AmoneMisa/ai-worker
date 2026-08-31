@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { VisionSchema, emptyVisionResult, sanitizeVision } from '../schemas/vision.js';
 import { visionPrompt } from '../prompts/vision.js';
 import { fetchJson, parseModelJson } from '../util/httpProvider.js';
+import { resolveFreeLlmApiKey } from '../util/freellmapiKey.js';
 
 function validate(value) {
   let parsedJson;
@@ -71,7 +72,10 @@ async function openAiCompatibleVision(provider, { baseUrl, apiKey, model, extraB
 async function freellmapi(images) {
   return openAiCompatibleVision('freellmapi', {
     baseUrl: config.freeLlmApiBaseUrl,
-    apiKey: config.freeLlmApiKey,
+    apiKey: resolveFreeLlmApiKey({
+      explicitKey: config.freeLlmApiKey,
+      dbPath: config.freeLlmApiDbPath,
+    }),
     model: config.freeLlmApiVisionModel,
   }, images);
 }
