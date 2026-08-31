@@ -83,7 +83,7 @@ export const config = Object.freeze({
   textTimeoutMs: number('AI_TEXT_TIMEOUT_MS', 120_000, { min: 1, integer: true }),
 
   maxRetries: number('AI_MAX_RETRIES', 1, { min: 0, integer: true }),
-  maxPhotosPerListing: number('AI_MAX_PHOTOS_PER_LISTING', 4, { min: 1, max: 20, integer: true }),
+  maxPhotosPerListing: number('AI_MAX_PHOTOS_PER_LISTING', 10, { min: 1, max: 20, integer: true }),
   minConfidence: number('AI_MIN_CONFIDENCE', 0.6, { min: 0, max: 1 }),
   maxTextChars: number('AI_MAX_TEXT_CHARS', 32_000, { min: 1, integer: true }),
   apiKey: env('AI_API_KEY'),
