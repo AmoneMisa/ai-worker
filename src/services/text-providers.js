@@ -43,7 +43,7 @@ async function freellmapi(request) {
     baseUrl: config.freeLlmApiBaseUrl,
     apiKey: resolveFreeLlmApiKey({
       explicitKey: config.freeLlmApiKey,
-      dbPath: config.freeLlmApiDbPath,
+      keyFile: config.freeLlmApiKeyFile,
     }),
     model: config.freeLlmApiTextModel,
   }, request);
