@@ -9,9 +9,9 @@ import { TEXT_PROVIDERS } from './text-providers.js';
 
 const cooldownUntil = new Map();
 
-export async function runText({ schema, systemPrompt, payload }) {
+export async function runText({ schema, systemPrompt, payload, providers = config.textProviders }) {
   const errors = [];
-  for (const provider of config.textProviders) {
+  for (const provider of providers) {
     const run = TEXT_PROVIDERS[provider];
     if (!run) {
       errors.push(`${provider}:unsupported`);

@@ -39,6 +39,7 @@ export const config = Object.freeze({
   // endpoints and performs provider/model failover internally. Direct providers
   // remain available for explicit opt-in/debugging, but are no longer defaults.
   textProviders: list('TEXT_PROVIDERS', 'freellmapi'),
+  translationProviders: list('TRANSLATION_PROVIDERS', 'freellmapi'),
   visionProviders: list('VISION_PROVIDERS', 'freellmapi'),
   freeLlmApiBaseUrl: env('FREELLMAPI_BASE_URL', 'http://freellmapi:3001/v1').replace(/\/$/, ''),
   // Optional explicit override. Production exports the generated unified key to
@@ -47,6 +48,9 @@ export const config = Object.freeze({
   freeLlmApiKeyFile: env('FREELLMAPI_API_KEY_FILE', '/run/freellmapi/unified.key'),
   freeLlmApiTextModel: env('FREELLMAPI_TEXT_MODEL', 'auto:balanced'),
   freeLlmApiVisionModel: env('FREELLMAPI_VISION_MODEL', 'auto:smart'),
+  freeTranslatorEnabled: bool('FREE_TRANSLATOR_ENABLED', true),
+  freeTranslatorMaxBytes: number('FREE_TRANSLATOR_MAX_BYTES', 500, { min: 1, max: 500, integer: true }),
+  freeTranslatorTimeoutMs: number('FREE_TRANSLATOR_TIMEOUT_MS', 8_000, { min: 1, integer: true }),
 
   visionConcurrency: number('VISION_CONCURRENCY', 1, { min: 1, integer: true }),
   visionProviderTimeoutMs: number('VISION_PROVIDER_TIMEOUT_MS', 30_000, { min: 1, integer: true }),

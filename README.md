@@ -103,7 +103,12 @@ GET /ai/result/vacancy-...
 X-AI-Key: <AI_API_KEY>
 ```
 
-Translation runs synchronously through the same FreeLLMAPI text gateway.
+Translation is a fourth extraction `kind` and runs synchronously (bypassing
+the queue), keeping the interactive UI path low-latency. A confidently
+detected short segment is first sent to the no-key MyMemory translation API
+(within its official 500-byte segment limit). Unsupported languages, long
+text, rate limits, or translator outages fall through to the FreeLLMAPI text
+gateway. Set `FREE_TRANSLATOR_ENABLED=false` to disable the public translator.
 
 ### Photo analysis
 

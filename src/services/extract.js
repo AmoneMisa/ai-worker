@@ -11,6 +11,7 @@ import { APARTMENT_SYSTEM, apartmentPayload } from '../prompts/apartment.js';
 import { VACANCY_SYSTEM, vacancyPayload } from '../prompts/vacancy.js';
 import { CANDIDATE_SYSTEM, candidatePayload } from '../prompts/candidate.js';
 import { TRANSLATION_SYSTEM, translationPayload } from '../prompts/translation.js';
+import { tryFreeTranslation } from './free-translation.js';
 
 export const EXTRACTION_KINDS = Object.freeze({
   apartment: {
@@ -53,10 +54,21 @@ export async function extract(kind, input) {
     throw Object.assign(new Error('INVALID_TRANSLATION: empty source text'), { code: 'INVALID_TRANSLATION' });
   }
 
+  if (kind === 'translation') {
+    try {
+      const freeResult = await tryFreeTranslation(String(input.text), input?.knownFacts?.targetLanguage);
+      if (freeResult && !translationLooksUnchanged(input.text, freeResult.data.translatedText)) return freeResult;
+    } catch {
+      // The no-key translator is best-effort; free LLM providers remain the
+      // reliable fallback for unsupported languages, long text and outages.
+    }
+  }
+
   const { data: raw, provider, timings } = await runText({
     schema: definition.jsonSchema,
     systemPrompt: definition.system,
     payload: definition.payload(input),
+    providers: kind === 'translation' ? config.translationProviders : config.textProviders,
   });
 
   const parsed = definition.zod.safeParse(raw);
